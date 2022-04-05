@@ -22,7 +22,6 @@ import io.ktor.response.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.html.InputType
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -248,7 +247,7 @@ private suspend fun processLinkSharedEvent(payload: LinkSharedPayload, locations
                     val errorDescription = it.get("error_description")?.takeIf { it.isTextual }?.asText()
                     "Error = '$error', description = '$errorDescription'"
                 }.orEmpty()
-                if (ex is AuthenticationRequiredException || ex is PermissionDeniedException) {
+                if (ex is AuthenticationRequiredException) {
                     db.spaceUserTokens.delete(
                         slackTeamId = slackTeamId,
                         slackUserId = slackUserId,
