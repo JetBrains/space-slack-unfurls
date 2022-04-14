@@ -26,7 +26,7 @@ val PROJECT_KEY_REGEX by lazy {
 
 @BlockLayoutBuilder
 fun ContextBlockElementDsl.spaceLogo() =
-    image("$entrypointUrl/static/space.jpeg", "Space Logo")
+    image("$entrypointUrl/static/space.png", "Space Logo")
 
 fun String.limitTo(limit: Int = 255) =
     if (length <= limit) {

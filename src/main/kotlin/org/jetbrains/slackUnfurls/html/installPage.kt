@@ -49,7 +49,7 @@ fun HTML.installPage(slackClientId: String) = page(
 
         img {
             alt = "Add to Space"
-            src = "/static/space.jpeg"
+            src = "/static/space.png"
             height = "30"
         }
         span {
