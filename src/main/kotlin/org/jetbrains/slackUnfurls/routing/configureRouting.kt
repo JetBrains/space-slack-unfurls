@@ -6,7 +6,6 @@ import io.ktor.http.*
 import io.ktor.http.content.*
 import io.ktor.locations.*
 import io.ktor.locations.post
-import io.ktor.request.*
 import io.ktor.response.*
 import io.ktor.routing.*
 import org.jetbrains.slackUnfurls.SlackCredentials
@@ -67,13 +66,6 @@ fun Application.configureRouting() {
 
         post<Routes.SlackInteractive> {
             onSlackInteractive(call)
-        }
-
-        route("*") {
-            handle {
-                log.info("Unhandled route - ${call.request.httpMethod.value} ${call.request.uri}")
-                call.respond(HttpStatusCode.NotFound)
-            }
         }
     }
 }

@@ -14,6 +14,8 @@ import io.ktor.response.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.slf4j.MDCContext
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toJavaLocalDateTime
@@ -38,20 +40,19 @@ fun Application.launchSlackUnfurlsInSpace() {
     launch {
         while (isActive) {
             val item = processUnfurlsAfterAuthChannel.receive()
-            log.info("User ${item.spaceUserId} in Space org ${item.spaceOrgId} has passed authentication, cleaning up authentication requests")
-            kotlin.runCatching {
-                val org = db.spaceOrgs.getById(item.spaceOrgId)
-                    ?: error("Integration for Space org ${item.spaceOrgId} hasn't been set up. Reinstall the Space application.")
+            withSpaceLogContext(item.spaceOrgId, item.spaceUserId, "") {
+                log.info("User has passed authentication, cleaning up authentication requests")
+                kotlin.runCatching {
+                    val org = db.spaceOrgs.getById(item.spaceOrgId)
+                        ?: error("Integration for Space org hasn't been set up. Reinstall the Space application.")
 
-                getSpaceClient(org).applications.unfurls.queue.clearExternalSystemAuthenticationRequests(
-                    ProfileIdentifier.Id(item.spaceUserId)
-                )
-                scheduleProcessing(org.clientId)
-            }.onFailure {
-                log.error(
-                    "Error processing completed auth flow for Space org ${item.spaceOrgId}, user id ${item.spaceUserId}",
-                    it
-                )
+                    getSpaceClient(org).applications.unfurls.queue.clearExternalSystemAuthenticationRequests(
+                        ProfileIdentifier.Id(item.spaceUserId)
+                    )
+                    scheduleProcessing(org.clientId)
+                }.onFailure {
+                    log.error("Error processing completed auth flow", it)
+                }
             }
         }
     }
@@ -159,71 +160,74 @@ suspend fun scheduleProcessing(clientId: String) {
 }
 
 private suspend fun processUnfurlQueue(spaceClientId: String, locations: Locations) {
-    val spaceOrg = db.spaceOrgs.getById(spaceClientId)
-        ?: error("Space instance with client id = $spaceClientId not found, reinstall the Space application")
+    withContext(MDCContext(mapOf(MDCParams.SPACE_ORG to spaceClientId))) {
+        val spaceOrg = db.spaceOrgs.getById(spaceClientId)
+            ?: error("Space instance with client id = $spaceClientId not found, reinstall the Space application")
 
-    var lastEtag: Long? = spaceOrg.lastUnfurlQueueItemEtag
+        var lastEtag: Long? = spaceOrg.lastUnfurlQueueItemEtag
+        log.info("Last unfurl queue item etag is $lastEtag")
 
-    log.info("Last unfurl queue item etag for Space org $spaceClientId is $lastEtag")
+        val spaceClient = getSpaceClient(spaceOrg)
 
-    val spaceClient = getSpaceClient(spaceOrg)
+        var queueItems =
+            spaceClient.applications.unfurls.queue.getUnfurlQueueItems(lastEtag, UNFURL_QUEUE_ITEMS_BATCH_SIZE)
+        log.info("Fetched ${queueItems.size} unfurl queue items")
+        while (queueItems.isNotEmpty()) {
+            queueItems
+                .filterWithLogging(log, message = "unfurl queue items because they do not have Space author id") { item ->
+                    item.authorUserId != null
+                }
+                .map { Url(it.target) to it }
+                .filterWithLogging(log, message = "unfurl queue items because these aren't message links") { (url, _) ->
+                    url.fullPath.startsWith("/archives")
+                }
+                .mapNotNullWithLogging(log, message = "unfurl queue items because application is not installed to Slack workspace") { (url, item) ->
+                    db.slackTeams.getByDomain(url.host.removeSuffix(".slack.com"))?.let { it to item }
+                }
+                .groupBy({ it.first to it.second.authorUserId }, { it.second })
+                .forEach { (key, itemsForSlackTeamAndUser) ->
+                    val (slackTeam, spaceProfileId) = key
+                    val spaceUserId = spaceProfileId?.getUserId(spaceClient)
+                    if (spaceUserId == null) {
+                        log.warn("User not found by profile id $spaceProfileId")
+                        return@withContext
+                    }
 
-    var queueItems = spaceClient.applications.unfurls.queue.getUnfurlQueueItems(lastEtag, UNFURL_QUEUE_ITEMS_BATCH_SIZE)
-    log.info("Fetched ${queueItems.size} unfurl queue items for Space org $spaceClientId")
-    while (queueItems.isNotEmpty()) {
-        queueItems
-            .filterWithLogging(log, message = "unfurl queue items because they do not have Space author id") { item ->
-                item.authorUserId != null
-            }
-            .map { Url(it.target) to it }
-            .filterWithLogging(log, message = "unfurl queue items because these aren't message links") { (url, _) ->
-                url.fullPath.startsWith("/archives")
-            }
-            .mapNotNullWithLogging(log, message = "unfurl queue items because application is not installed to Slack workspace") { (url, item) ->
-                db.slackTeams.getByDomain(url.host.removeSuffix(".slack.com"))?.let { it to item }
-            }
-            .groupBy({ it.first to it.second.authorUserId }, { it.second })
-            .forEach { (key, itemsForSlackTeamAndUser) ->
-                val (slackTeam, spaceProfileId) = key
-                val spaceUserId = spaceProfileId?.getUserId(spaceClient)
-                if (spaceUserId == null) {
-                    log.warn("User not found in Space org $spaceClientId by profile id $spaceProfileId")
-                    return
+                    withSpaceLogContext(spaceOrg.clientId, spaceUserId, slackTeam.id) {
+                        val context = SpaceUserKey(spaceOrg.clientId, spaceUserId, slackTeam.id)
+
+                        when (val slackClient = SlackUserClient.tryCreate(context, log)) {
+                            is SlackUserClient.Instance -> {
+                                log.info("Providing unfurls content for ${itemsForSlackTeamAndUser.size} queue items")
+                                provideUnfurlsContent(
+                                    spaceClient,
+                                    slackClient.instance,
+                                    slackTeam.domain,
+                                    itemsForSlackTeamAndUser
+                                )
+                            }
+                            is SlackUserClient.UnfurlsDisabled -> {
+                                log.info("Unfurls disabled by the user")
+                            }
+                            null -> {
+                                requestAuth(context, queueItems, spaceClient, locations)
+                            }
+                        }
+                    }
                 }
 
-                val context = SpaceUserKey(spaceOrg.clientId, spaceUserId, slackTeam.id)
-
-                when (val slackClient = SlackUserClient.tryCreate(context, log)) {
-                    is SlackUserClient.Instance -> {
-                        log.info("$context - Providing unfurls content for ${itemsForSlackTeamAndUser.size} queue items")
-                        provideUnfurlsContent(
-                            spaceClient,
-                            slackClient.instance,
-                            context,
-                            slackTeam.domain,
-                            itemsForSlackTeamAndUser
-                        )
-                    }
-                    is SlackUserClient.UnfurlsDisabled -> {
-                        log.info("$context - unfurls disabled by user")
-                    }
-                    null -> {
-                        requestAuth(context, queueItems, spaceClient, locations)
-                    }
-                }
-            }
-
-        lastEtag = queueItems.last().etag
-        db.spaceOrgs.updateLastUnfurlQueueItemEtag(spaceOrg.clientId, lastEtag)
-        queueItems = spaceClient.applications.unfurls.queue.getUnfurlQueueItems(lastEtag, UNFURL_QUEUE_ITEMS_BATCH_SIZE)
-        log.info("Fetched ${queueItems.size} unfurl queue items for Space org $spaceClientId")
+            lastEtag = queueItems.last().etag
+            db.spaceOrgs.updateLastUnfurlQueueItemEtag(spaceOrg.clientId, lastEtag)
+            queueItems =
+                spaceClient.applications.unfurls.queue.getUnfurlQueueItems(lastEtag, UNFURL_QUEUE_ITEMS_BATCH_SIZE)
+            log.info("Fetched ${queueItems.size} unfurl queue items")
+        }
     }
 }
 
 private suspend fun provideUnfurlsContent(
     spaceClient: SpaceClient,
     slackClient: SlackUserClientImpl,
-    context: SpaceUserKey,
     slackDomain: String,
     queueItems: List<ApplicationUnfurlQueueItem>
 ) {
@@ -247,7 +251,7 @@ private suspend fun provideUnfurlsContent(
                 null
         }
     }
-    log.info("$context - Found ${validItems.size} valid unfurl queue items")
+    log.info("Found ${validItems.size} valid unfurl queue items")
 
     val unfurls = validItems.mapNotNull { (item, channelId, messageId, threadTs) ->
         val message =
@@ -284,7 +288,7 @@ private suspend fun provideUnfurlsContent(
             }
             ApplicationUnfurl(item.id, content)
         } else {
-            log.warn("$context - Failed to fetch message for queue item ${item.id}")
+            log.warn("Failed to fetch message for queue item ${item.id}")
             null
         }
     }
@@ -457,7 +461,7 @@ suspend fun requestAuth(
             }
         )
     }
-    log.info("$context - Requested authentication in Slack for ${queueItems.size} links")
+    log.info("Requested authentication in Slack for ${queueItems.size} links")
 }
 
 
@@ -467,44 +471,6 @@ private suspend fun ProfileIdentifier.getUserId(client: SpaceClient) =
         is ProfileIdentifier.Username -> client.teamDirectory.profiles.getProfile(this).id
         else -> null
     }
-
-private suspend fun decorateText(slackClient: SlackUserClientImpl, slackDomain: String, message: String): String {
-    return UserMentionRegex.findAll(message).sortedByDescending { it.range.first }
-        .fold(message) { text, match ->
-            match.groupValues[1]
-                .let { slackClient.fetchUserName(it)?.userName() }
-                ?.let { replacement -> text.replaceRange(match.range, "@$replacement") }
-                ?: text
-        }
-        .let {
-            ChannelMentionRegex.findAll(it).sortedByDescending { it.range.first }.fold(it) { text, match ->
-                match.groupValues[1]
-                    .let { channelId -> slackClient.fetchChannelName(channelId)?.channelLink(slackClient, slackDomain, channelId) }
-                    ?.let { replacement -> text.replaceRange(match.range, replacement) }
-                    ?: text
-            }
-        }
-        .let {
-            GroupMentionRegex.findAll(it).sortedByDescending { it.range.first }.fold(it) { text, match ->
-                match.groupValues[1]
-                    .let { groupId ->
-                        slackClient.fetchUserGroups()?.usergroups?.firstOrNull { it.id == groupId }?.name
-                    }
-                    ?.let { replacement -> text.replaceRange(match.range, "@$replacement") }
-                    ?: text
-            }
-        }
-        .let {
-            SpecialMentionRegex.findAll(it).sortedByDescending { it.range.first }.fold(it) { text, match ->
-                text.replaceRange(match.range, "@${match.groupValues[1]}")
-            }
-        }
-}
-
-private val UserMentionRegex = Regex("<@(\\w+)(?:\\|\\w+)?>")
-private val ChannelMentionRegex = Regex("<#(\\w+)(?:\\|\\w+)?>")
-private val GroupMentionRegex = Regex("<!subteam\\^(\\w+)>")
-private val SpecialMentionRegex = Regex("<!(here|channel|everyone)>")
 
 private fun tsToMessageId(ts: String) =
     "p" + ts.filterNot { it == '.' }

@@ -16,7 +16,7 @@ class SlackAppClient private constructor(
     accessToken: String,
     refreshToken: String,
     log: Logger
-) : BaseSlackClient(accessToken, refreshToken, log, logPrefix = "Slack team $teamId") {
+) : BaseSlackClient(accessToken, refreshToken, log) {
 
     companion object {
         suspend fun tryCreate(teamId: String, log: Logger): SlackAppClient? =
@@ -26,14 +26,14 @@ class SlackAppClient private constructor(
     }
 
     suspend fun sendUnfurlsToSlack(builder: RequestConfigurator<ChatUnfurlRequest.ChatUnfurlRequestBuilder>) =
-        fetch { accessToken ->
+        fetch("sending unfurls to Slack") { accessToken ->
             slackApiClient.methods(accessToken).chatUnfurl(builder)
         }
 
     override suspend fun reloadTokensFromDb(): Tokens? {
         val team = db.slackTeams.getById(teamId)
         if (team == null) {
-            log.info("$logPrefix - refresh token cannot be retrieved from storage")
+            log.info("Refresh token cannot be retrieved from storage")
             return null
         }
 

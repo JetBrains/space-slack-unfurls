@@ -41,15 +41,15 @@ fun HTML.page(initHead: HEAD.() -> Unit = {}, initBody: DIV.() -> Unit) {
     }
 }
 
-suspend fun ApplicationCall.respondError(statusCode: HttpStatusCode, log: Logger, message: String, logPrefix: String = "") {
-    log.warn("$logPrefix. $message")
+suspend fun ApplicationCall.respondError(statusCode: HttpStatusCode, log: Logger, message: String) {
+    log.warn(message)
     respondHtml(statusCode) {
         errorPage(message)
     }
 }
 
-suspend fun ApplicationCall.respondSuccess(log: Logger, message: String, logPrefix: String = "") {
-    log.info("$logPrefix. $message")
+suspend fun ApplicationCall.respondSuccess(log: Logger, message: String) {
+    log.info(message)
     respondHtml {
         successPage(message)
     }

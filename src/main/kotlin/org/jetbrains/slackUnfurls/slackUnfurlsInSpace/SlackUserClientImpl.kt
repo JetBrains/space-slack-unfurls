@@ -15,9 +15,9 @@ class SlackUserClientImpl(
     accessToken: String,
     refreshToken: String,
     log: Logger
-) : BaseSlackClient(accessToken, refreshToken, log, logPrefix = context.toString()) {
+) : BaseSlackClient(accessToken, refreshToken, log) {
 
-    suspend fun fetchMessage(channelId: String, messageId: String) = fetch { accessToken ->
+    suspend fun fetchMessage(channelId: String, messageId: String) = fetch("fetching message") { accessToken ->
         slackApiClient.methods(accessToken).conversationsHistory {
             it.channel(channelId)
                 .latest(messageIdToTs(messageId))
@@ -26,7 +26,7 @@ class SlackUserClientImpl(
         }
     }
 
-    suspend fun fetchThreadMessage(channelId: String, messageId: String, threadTs: String) = fetch { accessToken ->
+    suspend fun fetchThreadMessage(channelId: String, messageId: String, threadTs: String) = fetch("fetching thread message") { accessToken ->
         slackApiClient.methods(accessToken).conversationsReplies {
             it.channel(channelId)
                 .latest(threadTs)
@@ -36,25 +36,25 @@ class SlackUserClientImpl(
         }
     }
 
-    suspend fun fetchUserName(userId: String) = fetch { accessToken ->
+    suspend fun fetchUserName(userId: String) = fetch("fetching user name") { accessToken ->
         slackApiClient.methods(accessToken).usersInfo {
             it.user(userId)
         }
     }
 
-    suspend fun fetchTeamName(teamId: String) = fetch { accessToken ->
+    suspend fun fetchTeamName(teamId: String) = fetch("fetching team name") { accessToken ->
         slackApiClient.methods(accessToken).teamInfo {
             it.team(teamId)
         }
     }
 
-    suspend fun fetchChannelName(channelId: String) = fetch { accessToken ->
+    suspend fun fetchChannelName(channelId: String) = fetch("fetching channel name") { accessToken ->
         slackApiClient.methods(accessToken).conversationsInfo {
             it.channel(channelId)
         }
     }
 
-    suspend fun fetchUserGroups() = fetch { accessToken ->
+    suspend fun fetchUserGroups() = fetch("fetching user groups") { accessToken ->
         slackApiClient.methods(accessToken).usergroupsList { it }
     }
 
@@ -67,7 +67,7 @@ class SlackUserClientImpl(
             is UserToken.UnfurlsDisabled ->
                 null
             null -> {
-                log.info("$context - no Slack refresh token found")
+                log.info("No Slack refresh token found")
                 null
             }
         }

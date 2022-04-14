@@ -10,30 +10,29 @@ import org.slf4j.Logger
 abstract class BaseSlackClient(
     accessToken: String,
     refreshToken: String,
-    protected val log: Logger,
-    protected val logPrefix: String
+    protected val log: Logger
 ) {
 
     private var tokens: Tokens? = Tokens(accessToken, refreshToken)
 
-    protected suspend fun <T : SlackApiTextResponse> fetch(handler: suspend (String) -> T?) : T? {
+    protected suspend fun <T : SlackApiTextResponse> fetch(action: String, handler: suspend (String) -> T?) : T? {
         return tokens?.let {
             try {
                 handler(it.accessToken).let { response: T? ->
                     if (response != null && !response.isOk) {
-                        handleSlackError(response.error, handler)
+                        handleSlackError(action, response.error, handler)
                     } else {
                         response
                     }
                 }
             } catch (ex: SlackApiException) {
-                log.error("$logPrefix - Failure fetching data from Slack", ex)
-                handleSlackError(ex.error.error, handler)
+                log.error("Failure fetching data from Slack", ex)
+                handleSlackError(action, ex.error.error, handler)
             }
         }
     }
 
-    private suspend fun <T : SlackApiTextResponse> handleSlackError(error: String, handler: (suspend (String) -> T?)?) : T? {
+    private suspend fun <T : SlackApiTextResponse> handleSlackError(action: String, error: String, handler: (suspend (String) -> T?)?) : T? {
         if ((error == "token_expired" || error == "cannot_auth_user" || error == "invalid_auth") && handler != null) {
             tryRefreshToken()
             // break recursion on the second call to `handleSlackError` by omitting handler parameter
@@ -41,21 +40,21 @@ abstract class BaseSlackClient(
                 try {
                     handler(it.accessToken).let { response: T? ->
                         if (response != null && !response.isOk) {
-                            handleSlackError(response.error, handler = null)
+                            handleSlackError(action, response.error, handler = null)
                         } else {
                             response
                         }
                     }
                 } catch (ex: SlackApiException) {
-                    log.error("$logPrefix - Failure fetching data from Slack", ex)
-                    handleSlackError(ex.error.error, handler = null)
+                    log.error("Failure fetching data from Slack", ex)
+                    handleSlackError(action, ex.error.error, handler = null)
                 }
             }
         }
 
         val shouldResetToken = slackErrorsToResetToken.contains(error)
         val slackUserTokenResetMessage = if (shouldResetToken) "Slack user refresh token is reset." else ""
-        log.warn("$logPrefix - Got ok=false from Slack - $error. $slackUserTokenResetMessage")
+        log.warn("Got ok=false from Slack on $action - $error. $slackUserTokenResetMessage")
         if (shouldResetToken) {
             resetToken()
         }
@@ -63,7 +62,7 @@ abstract class BaseSlackClient(
     }
 
     private suspend fun tryRefreshToken() {
-        log.info("$logPrefix - refreshing token...")
+        log.info("Refreshing token...")
         val refreshToken = tokens?.refreshToken ?: return
         tokens = null
 
@@ -75,7 +74,7 @@ abstract class BaseSlackClient(
                 .refreshToken(refreshToken)
         }
         if (!response.isOk) {
-            log.warn("$logPrefix - got ok=false while trying to refresh access token - ${response.error}")
+            log.warn("Got ok=false while trying to refresh access token - ${response.error}")
             if (response.error == "invalid_refresh_token") {
                 val tokensFromDb = reloadTokensFromDb() ?: return
                 if (tokensFromDb.refreshToken != refreshToken) {
@@ -92,13 +91,13 @@ abstract class BaseSlackClient(
 
         val newAccessToken = response.accessToken ?: response.authedUser?.accessToken
         if (newAccessToken == null) {
-            log.warn("$logPrefix - got ok response from Slack but no access token provided")
+            log.warn("Got ok response from Slack but no access token provided")
             return
         }
 
         val newRefreshToken =
             (response.refreshToken ?: response.authedUser?.refreshToken).takeUnless { it == refreshToken }
-        log.info("$logPrefix - access token refreshed, ${if (newRefreshToken != null) "with" else "without"} new refresh token")
+        log.info("Access token refreshed, ${if (newRefreshToken != null) "with" else "without"} new refresh token")
         tokens = Tokens(newAccessToken, newRefreshToken ?: refreshToken).also {
             updateTokensInDb(it)
         }

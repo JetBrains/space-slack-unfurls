@@ -6,53 +6,50 @@ import io.ktor.http.*
 import io.ktor.response.*
 import io.ktor.util.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.css.code
-import org.jetbrains.slackUnfurls.SlackCredentials
-import org.jetbrains.slackUnfurls.db
-import org.jetbrains.slackUnfurls.encrypt
+import kotlinx.coroutines.slf4j.MDCContext
+import kotlinx.coroutines.withContext
+import org.jetbrains.slackUnfurls.*
 import org.jetbrains.slackUnfurls.html.respondError
 import org.jetbrains.slackUnfurls.html.respondSuccess
 import org.jetbrains.slackUnfurls.routing.Routes
-import org.jetbrains.slackUnfurls.storage.*
+import org.jetbrains.slackUnfurls.storage.SlackOAuthSession
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
 
 suspend fun startUserAuthFlowInSlack(call: ApplicationCall, params: Routes.SlackOAuth, callbackUrl: String) {
-    val flowId = generateNonce()
-    val slackDomain = db.slackTeams.getById(params.slackTeamId)?.domain
-    if (slackDomain == null) {
-        log.warn("Slack team ${params.slackTeamId} not found")
-        return
-    }
-
-    db.slackUserTokens.delete(
-        spaceOrgId = params.spaceOrgId,
-        spaceUserId = params.spaceUser,
-        slackTeamId = params.slackTeamId
-    )
-    db.slackOAuthSessions.create(flowId, params)
-    log.info(
-        "Started OAuth flow in Slack for Space org ${params.spaceOrgId}, user ${params.spaceUser}, slack team ${params.slackTeamId}. Flow id is $flowId"
-    )
-
-    val authUrl = with(URLBuilder("https://$slackDomain.slack.com/oauth/v2/authorize")) {
-        parameters.apply {
-            append("client_id", SlackCredentials.clientId)
-            append("user_scope", slackPermissionScopes.joinToString(","))
-            append("state", flowId)
-            append("redirect_uri", callbackUrl)
+    withSpaceLogContext(params.spaceOrgId, params.spaceUser, params.slackTeamId) {
+        val flowId = generateNonce()
+        val slackDomain = db.slackTeams.getById(params.slackTeamId)?.domain
+        if (slackDomain == null) {
+            log.warn("Application is not installed for Slack team")
+            return@withSpaceLogContext
         }
-        build()
+
+        db.slackUserTokens.delete(
+            spaceOrgId = params.spaceOrgId,
+            spaceUserId = params.spaceUser,
+            slackTeamId = params.slackTeamId
+        )
+        db.slackOAuthSessions.create(flowId, params)
+        log.info("Started user OAuth flow in Slack. Flow id is $flowId")
+
+        val authUrl = with(URLBuilder("https://$slackDomain.slack.com/oauth/v2/authorize")) {
+            parameters.apply {
+                append("client_id", SlackCredentials.clientId)
+                append("user_scope", slackPermissionScopes.joinToString(","))
+                append("state", flowId)
+                append("redirect_uri", callbackUrl)
+            }
+            build()
+        }
+        call.respondRedirect(authUrl.toString())
     }
-    call.respondRedirect(authUrl.toString())
 }
 
 suspend fun onUserAuthFlowCompletedInSlack(call: ApplicationCall, flowId: String, params: Routes.SlackOAuthCallback) {
-    val shortLogPrefix = "Flow id = $flowId"
-
     if (params.code.isNullOrBlank()) {
-        call.respondError(HttpStatusCode.BadRequest, log, "Expected code query string parameter in request", shortLogPrefix)
+        call.respondError(HttpStatusCode.BadRequest, log, "Expected code query string parameter in request (flow id = $flowId)")
         return
     }
 
@@ -60,45 +57,43 @@ suspend fun onUserAuthFlowCompletedInSlack(call: ApplicationCall, flowId: String
         call.respondError(
             HttpStatusCode.BadRequest,
             log,
-            "Unexpected value of the state query string parameter",
-            shortLogPrefix
+            "Unexpected value of the state query string parameter (flow id = $flowId)"
         )
         return
     }
 
-    val fullLogPrefix = "Flow id = $flowId, Space org ${session.spaceOrgId}, user ${session.spaceUserId}, slack team ${session.slackTeamId}"
+    withSpaceLogContext(session.spaceOrgId, session.spaceUserId, session.slackTeamId, "flow-id" to flowId) {
+        val response = requestOAuthToken(params.code)
+        if (response == null || response.authedUser?.accessToken.isNullOrBlank()) {
+            call.respondError(HttpStatusCode.Unauthorized, log, "Could not fetch OAuth token from Slack (flow id = $flowId)")
+            return@withSpaceLogContext
+        }
 
-    val response = requestOAuthToken(params.code)
-    if (response == null || response.authedUser?.accessToken.isNullOrBlank()) {
-        call.respondError(HttpStatusCode.Unauthorized, log, "Could not fetch OAuth token from Slack", fullLogPrefix)
-        return
-    }
-
-    db.slackUserTokens.save(
-        spaceOrgId = session.spaceOrgId,
-        spaceUserId = session.spaceUserId,
-        slackTeamId = session.slackTeamId,
-        accessToken = encrypt(response.authedUser.accessToken),
-        refreshToken = encrypt(response.authedUser.refreshToken)
-    )
-    processUnfurlsAfterAuthChannel.send(session)
-
-    if (session.backUrl != null) {
-        log.info("$fullLogPrefix. Successfully authenticated user in Slack, redirecting to back url")
-        call.respondRedirect(session.backUrl)
-    } else {
-        // back url should be always present in this flow, but we cannot statically verify this
-        call.respondSuccess(
-            log,
-            "Successfully authenticated with Slack. Now Slack links in your chat messages in JetBrains Space will be accompanied with previews.",
-            fullLogPrefix
+        db.slackUserTokens.save(
+            spaceOrgId = session.spaceOrgId,
+            spaceUserId = session.spaceUserId,
+            slackTeamId = session.slackTeamId,
+            accessToken = encrypt(response.authedUser.accessToken),
+            refreshToken = encrypt(response.authedUser.refreshToken)
         )
+        processUnfurlsAfterAuthChannel.send(session)
+
+        if (session.backUrl != null) {
+            log.info("Successfully authenticated user in Slack, redirecting to back url")
+            call.respondRedirect(session.backUrl)
+        } else {
+            // back url should be always present in this flow, but we cannot statically verify this
+            call.respondSuccess(
+                log,
+                "Successfully authenticated with Slack. Now Slack links in your chat messages in JetBrains Space will be accompanied with previews."
+            )
+        }
     }
 }
 
 suspend fun onAppInstalledToSlackTeam(call: ApplicationCall, params: Routes.SlackOAuthCallback) {
     if (params.code.isNullOrBlank()) {
-        call.respondError(HttpStatusCode.BadRequest, log, "Expected code query string parameter in request", "")
+        call.respondError(HttpStatusCode.BadRequest, log, "Expected code query string parameter in request")
         return
     }
 
@@ -106,33 +101,29 @@ suspend fun onAppInstalledToSlackTeam(call: ApplicationCall, params: Routes.Slac
     val accessToken = response?.accessToken
     val refreshToken = response?.refreshToken
     val teamId = response?.team?.id
-    if (accessToken.isNullOrBlank() || refreshToken.isNullOrBlank() || teamId.isNullOrBlank()) {
-        val message = "Could not fetch OAuth token from Slack. " +
-                "Team id = $teamId, " +
-                "access token is ${if (accessToken.isNullOrBlank()) "empty" else "provided" }, " +
-                "refresh token is ${if (refreshToken.isNullOrBlank()) "empty" else "provided"}"
-        call.respondError(HttpStatusCode.Unauthorized, log, message, "Code = $code")
-        return
+    withContext(MDCContext(mapOf(MDCParams.SLACK_TEAM to teamId.orEmpty()))) {
+        if (accessToken.isNullOrBlank() || refreshToken.isNullOrBlank() || teamId.isNullOrBlank()) {
+            val message = "Could not fetch OAuth token from Slack. " +
+                    "Team id = $teamId, " +
+                    "access token is ${if (accessToken.isNullOrBlank()) "empty" else "provided"}, " +
+                    "refresh token is ${if (refreshToken.isNullOrBlank()) "empty" else "provided"}, " +
+                    "code = ${params.code}"
+            call.respondError(HttpStatusCode.Unauthorized, log, message)
+            return@withContext
+        }
+
+        val teamResponse = slackApiClient.methods(accessToken).teamInfo { it.team(teamId) }
+        if (teamResponse.team == null) {
+            call.respondError(
+                HttpStatusCode.Unauthorized, log, "Could not fetch team info from Slack - ${teamResponse.error}"
+            )
+            return@withContext
+        }
+
+        db.slackTeams.create(teamId, teamResponse.team.domain, encrypt(accessToken), encrypt(refreshToken))
+
+        call.respondSuccess(log, "Application successfully installed to Slack team")
     }
-
-    val teamResponse = slackApiClient.methods(accessToken).teamInfo { it.team(teamId) }
-    if (teamResponse.team == null) {
-        call.respondError(
-            HttpStatusCode.Unauthorized,
-            log,
-            "Could not fetch team info from Slack - ${teamResponse.error}",
-            "Team id = ${response.team.id}"
-        )
-        return
-    }
-
-    db.slackTeams.create(teamId, teamResponse.team.domain, encrypt(accessToken), encrypt(refreshToken))
-
-    call.respondSuccess(
-        log,
-        "Application successfully installed to Slack team",
-        "Slack team $teamId"
-    )
 }
 
 

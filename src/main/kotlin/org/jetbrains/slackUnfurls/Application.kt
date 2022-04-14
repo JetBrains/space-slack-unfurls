@@ -12,6 +12,8 @@ import org.jetbrains.slackUnfurls.storage.postgres.initPostgres
 
 @Suppress("unused")
 fun Application.module() {
+    log.info("Slack client id = ${SlackCredentials.clientId}")
+
     db
     configureRouting()
     launchSlackUnfurlsInSpace()

@@ -46,7 +46,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.3.2")
     implementation("org.jetbrains.kotlinx:kotlinx-html-jvm:0.7.3")
     implementation("org.jetbrains:kotlin-css-jvm:1.0.0-pre.129-kotlin-1.4.20")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-slf4j:1.6.1")
     implementation("ch.qos.logback:logback-classic:$logback_version")
+    implementation("ch.qos.logback.contrib:logback-json-classic:0.1.5")
+    implementation("ch.qos.logback.contrib:logback-jackson:0.1.5")
 
     implementation("org.jetbrains.exposed:exposed-core:$exposed_version")
     implementation("org.jetbrains.exposed:exposed-dao:$exposed_version")

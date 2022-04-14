@@ -134,14 +134,16 @@ suspend fun onSlackInteractive(call: ApplicationCall) {
 }
 
 suspend fun processDeferredLinkSharedEvents(slackTeamId: String, slackUserId: String, spaceOrgId: String) {
-    db.deferredSlackLinkUnfurlEvents
-        .getOnce(slackTeamId = slackTeamId, slackUserId = slackUserId, spaceOrgId = spaceOrgId, limit = 10)
-        .also {
-            log.info("Enqueued ${it.size} deferred link unfurl events from Slack to process after user authenticated in Space")
-        }
-        .forEach {
-            processUnfurlsChannel.send(gson.fromJson(it, LinkSharedPayload::class.java))
-        }
+    withSlackLogContext(slackTeamId, slackUserId, spaceOrgId) {
+        db.deferredSlackLinkUnfurlEvents
+            .getOnce(slackTeamId = slackTeamId, slackUserId = slackUserId, spaceOrgId = spaceOrgId, limit = 10)
+            .also {
+                log.info("Enqueued ${it.size} deferred link unfurl events from Slack to process after user authenticated in Space")
+            }
+            .forEach {
+                processUnfurlsChannel.send(gson.fromJson(it, LinkSharedPayload::class.java))
+            }
+    }
 }
 
 private sealed class LinkToUnfurl {
@@ -170,106 +172,117 @@ private sealed class LinkToUnfurl {
 private suspend fun processLinkSharedEvent(payload: LinkSharedPayload, locations: Locations) {
     val slackTeamId = payload.teamId
     val slackUserId = payload.event.user
-    val event = payload.event
-    val slackAppClient = SlackAppClient.tryCreate(slackTeamId, log)
-    if (slackAppClient == null) {
-        log.warn("Application is not installed into Slack team ($slackTeamId)")
-        return
-    }
-
-    val linksToUnfurl = event.links
-        .map { it.url to Url(it.url.replace("&amp;", "&")) }
-        .mapNotNullWithLogging(log, message = "links because application is not installed to Space org") { (link, url) ->
-            db.spaceOrgs.getByDomain(url.host)?.let { Triple(link, url, it) }
+    withSlackLogContext(slackTeamId, slackUserId, spaceOrgId = "") {
+        val event = payload.event
+        val slackAppClient = SlackAppClient.tryCreate(slackTeamId, log)
+        if (slackAppClient == null) {
+            log.warn("Application is not installed into Slack team")
+            return@withSlackLogContext
         }
-        .map { (link, url, spaceOrg) ->
-            val (matchResult, provide) = spaceUnfurlProviders.flatMap { it.matchers }
-                .firstNotNullOfOrNull { (regex, provide) -> regex.matchEntire(url.encodedPath)?.let { it to provide } }
-                ?: return@map LinkToUnfurl.NotSupportedEntity
 
-            val key = SlackUserKey(slackTeamId = slackTeamId, slackUserId = slackUserId, spaceOrgId = spaceOrg.clientId)
-            when (val spaceUserToken = db.spaceUserTokens.get(key)) {
-                is UserToken.Value -> {
-                    val spaceClient = getSpaceClient(spaceOrg, spaceUserToken)
-                    LinkToUnfurl.ReadyToUnfurl(link, url, spaceOrg, spaceClient, matchResult, provide)
-                }
-                is UserToken.UnfurlsDisabled ->
-                    LinkToUnfurl.UnfurlsDisabledByUser
-                null ->
-                    LinkToUnfurl.UserAuthRequired(spaceOrg)
+        val linksToUnfurl = event.links
+            .map { it.url to Url(it.url.replace("&amp;", "&")) }
+            .mapNotNullWithLogging(log, message = "links because application is not installed to Space org") { (link, url) ->
+                db.spaceOrgs.getByDomain(url.host)?.let { Triple(link, url, it) }
             }
-        }
-        .filterWithLogging(log, message = "links because unfurls have been disabled by user") {
-            it !is LinkToUnfurl.UnfurlsDisabledByUser
-        }
-        .filterWithLogging(log, message = "links because they do not match unfurlable Space entities") {
-            it !is LinkToUnfurl.NotSupportedEntity
-        }
+            .map { (link, url, spaceOrg) ->
+                val (matchResult, provide) = spaceUnfurlProviders.flatMap { it.matchers }
+                    .firstNotNullOfOrNull { (regex, provide) ->
+                        regex.matchEntire(url.encodedPath)?.let { it to provide }
+                    }
+                    ?: run {
+                        log.info("Space url ${url.encodedPath} is not recognized for link preview")
+                        return@map LinkToUnfurl.NotSupportedEntity
+                    }
 
-    val readyToUnfurl = linksToUnfurl.filterIsInstance<LinkToUnfurl.ReadyToUnfurl>()
-    val needRequestAuth = linksToUnfurl.filterIsInstance<LinkToUnfurl.UserAuthRequired>()
+                val key =
+                    SlackUserKey(slackTeamId = slackTeamId, slackUserId = slackUserId, spaceOrgId = spaceOrg.clientId)
+                when (val spaceUserToken = db.spaceUserTokens.get(key)) {
+                    is UserToken.Value -> {
+                        val spaceClient = getSpaceClient(spaceOrg, spaceUserToken)
+                        LinkToUnfurl.ReadyToUnfurl(link, url, spaceOrg, spaceClient, matchResult, provide)
+                    }
+                    is UserToken.UnfurlsDisabled ->
+                        LinkToUnfurl.UnfurlsDisabledByUser
+                    null ->
+                        LinkToUnfurl.UserAuthRequired(spaceOrg)
+                }
+            }
+            .filterWithLogging(log, message = "links because unfurls have been disabled by user") {
+                it !is LinkToUnfurl.UnfurlsDisabledByUser
+            }
+            .filterWithLogging(log, message = "links because they do not match unfurlable Space entities") {
+                it !is LinkToUnfurl.NotSupportedEntity
+            }
 
-    // prompt user to pass authentication in Space if all Space links in the message require authentication
-    // but go straight to unfurling links if we can unfurl at least one of them
-    if (readyToUnfurl.isEmpty() && needRequestAuth.isNotEmpty()) {
-        val spaceOrg = needRequestAuth.first().spaceOrg
-        val spaceOAuthUrl = "$entrypointUrl/${
-            locations.href(
-                Routes.SpaceOAuth(slackTeamId = slackTeamId, slackUserId = slackUserId, spaceOrgId = spaceOrg.clientId)
-            )
-        }"
-        slackAppClient.sendUnfurlsToSlack {
-            it.unfurlId(event.unfurlId)
-            it.source(event.source)
-            it.userAuthBlocks(authRequestMessage(spaceOrg, spaceOAuthUrl))
-        }
+        val readyToUnfurl = linksToUnfurl.filterIsInstance<LinkToUnfurl.ReadyToUnfurl>()
+        val needRequestAuth = linksToUnfurl.filterIsInstance<LinkToUnfurl.UserAuthRequired>()
 
-        db.deferredSlackLinkUnfurlEvents.create(
-            slackTeamId = slackTeamId,
-            slackUserId = slackUserId,
-            spaceOrgId = spaceOrg.clientId,
-            event = gson.toJson(payload)
-        )
-        return
-    }
-
-    // generate unfurls
-    val unfurls = readyToUnfurl.mapNotNull { item ->
-        val spaceOrgId = item.spaceOrg.clientId
-        log.info("Slack team $slackTeamId, user ${event.user}, Space org $spaceOrgId - providing unfurls")
-        try {
-            item.provideUnfurlDetail()?.let { item.originalLink to it }
-        } catch (ex: Exception) {
-            val errorDetails = if (ex is RequestException) {
-                val responseJson = ex.response.readText(Charsets.UTF_8).let(::parseJson)
-                val message = responseJson?.let {
-                    val error = it.get("error")?.takeIf { it.isTextual }?.asText()
-                    val errorDescription = it.get("error_description")?.takeIf { it.isTextual }?.asText()
-                    "Error = '$error', description = '$errorDescription'"
-                }.orEmpty()
-                if (ex is AuthenticationRequiredException) {
-                    db.spaceUserTokens.delete(
+        // prompt user to pass authentication in Space if all Space links in the message require authentication
+        // but go straight to unfurling links if we can unfurl at least one of them
+        if (readyToUnfurl.isEmpty() && needRequestAuth.isNotEmpty()) {
+            val spaceOrg = needRequestAuth.first().spaceOrg
+            val spaceOAuthUrl = "$entrypointUrl/${
+                locations.href(
+                    Routes.SpaceOAuth(
                         slackTeamId = slackTeamId,
                         slackUserId = slackUserId,
-                        spaceOrgId = spaceOrgId
+                        spaceOrgId = spaceOrg.clientId
                     )
-                    "Dropped user refresh token for Space. $message"
-                } else message
-            } else ""
+                )
+            }"
+            slackAppClient.sendUnfurlsToSlack {
+                it.unfurlId(event.unfurlId)
+                it.source(event.source)
+                it.userAuthBlocks(authRequestMessage(spaceOrg, spaceOAuthUrl))
+            }
 
-            log.error(
-                "Slack team $slackTeamId, user $slackUserId, Space org $spaceOrgId - error providing unfurl. $errorDetails",
-                ex
+            db.deferredSlackLinkUnfurlEvents.create(
+                slackTeamId = slackTeamId,
+                slackUserId = slackUserId,
+                spaceOrgId = spaceOrg.clientId,
+                event = gson.toJson(payload)
             )
-            null
+            return@withSlackLogContext
         }
-    }
 
-    if (unfurls.isNotEmpty()) {
-        slackAppClient.sendUnfurlsToSlack {
-            it.unfurlId(event.unfurlId)
-            it.source(event.source)
-            it.unfurls(unfurls.associate { it })
+        // generate unfurls
+        val unfurls = readyToUnfurl.mapNotNull { item ->
+            val spaceOrgId = item.spaceOrg.clientId
+            withSlackLogContext(slackTeamId, slackUserId, spaceOrgId) {
+                log.info("Providing unfurls for a link")
+                try {
+                    item.provideUnfurlDetail()?.let { item.originalLink to it }
+                } catch (ex: Exception) {
+                    val errorDetails = if (ex is RequestException) {
+                        val responseJson = ex.response.readText(Charsets.UTF_8).let(::parseJson)
+                        val message = responseJson?.let {
+                            val error = it.get("error")?.takeIf { it.isTextual }?.asText()
+                            val errorDescription = it.get("error_description")?.takeIf { it.isTextual }?.asText()
+                            "Error = '$error', description = '$errorDescription'"
+                        }.orEmpty()
+                        if (ex is AuthenticationRequiredException) {
+                            db.spaceUserTokens.delete(
+                                slackTeamId = slackTeamId,
+                                slackUserId = slackUserId,
+                                spaceOrgId = spaceOrgId
+                            )
+                            "Dropped user refresh token for Space. $message"
+                        } else message
+                    } else ""
+
+                    log.error("Error providing unfurl. $errorDetails", ex)
+                    null
+                }
+            }
+        }
+
+        if (unfurls.isNotEmpty()) {
+            slackAppClient.sendUnfurlsToSlack {
+                it.unfurlId(event.unfurlId)
+                it.source(event.source)
+                it.unfurls(unfurls.associate { it })
+            }
         }
     }
 }
@@ -302,16 +315,18 @@ private fun authRequestMessage(spaceOrg: SpaceOrg, spaceOAuthUrl: String) = with
 }
 
 private suspend fun disableUnfurling(payload: BlockActionPayload, spaceOrgId: String) {
-    db.spaceUserTokens.disableUnfurls(
-        slackTeamId = payload.team.id,
-        slackUserId = payload.user.id,
-        spaceOrgId = spaceOrgId
-    )
-    ActionResponseSender(Slack.getInstance()).send(
-        payload.responseUrl,
-        ActionResponse.builder().deleteOriginal(true).build()
-    )
-    log.info("Disabled Space links unfurling for Slack team ${payload.team.id}, user ${payload.user.id}, Space org $spaceOrgId")
+    withSlackLogContext(payload.team.id, payload.user.id, spaceOrgId) {
+        db.spaceUserTokens.disableUnfurls(
+            slackTeamId = payload.team.id,
+            slackUserId = payload.user.id,
+            spaceOrgId = spaceOrgId
+        )
+        ActionResponseSender(Slack.getInstance()).send(
+            payload.responseUrl,
+            ActionResponse.builder().deleteOriginal(true).build()
+        )
+        log.info("Disabled Space links unfurling")
+    }
 }
 
 
