@@ -8,10 +8,8 @@ import kotlinx.datetime.toJavaLocalDateTime
 import kotlinx.datetime.toLocalDateTime
 import space.jetbrains.api.runtime.SpaceClient
 import space.jetbrains.api.runtime.resources.chats
-import space.jetbrains.api.runtime.types.CUserPrincipalDetails
-import space.jetbrains.api.runtime.types.ChannelIdentifier
-import space.jetbrains.api.runtime.types.ChatMessageIdentifier
-import space.jetbrains.api.runtime.types.M2SharedChannelContent
+import space.jetbrains.api.runtime.resources.richText
+import space.jetbrains.api.runtime.types.*
 import java.time.format.DateTimeFormatter
 
 
@@ -75,13 +73,18 @@ object ChatUnfurlProvider : SpaceUnfurlProvider {
                 .toJavaLocalDateTime()
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
 
+            val messageText = buildString {
+                val spaceRichText = spaceClient.richText.parseMarkdown(message.text)
+                appendDocument(spaceRichText)
+            }
+
             ChatUnfurlRequest.UnfurlDetail().apply {
                 blocks = withBlocks {
                     context {
                         markdownText("*$authorName* in <$channelUrl|$channelName> ($createdAt)")
                     }
                     section {
-                        markdownText(message.text)
+                        markdownText(messageText)
                     }
                     context {
                         spaceLogo()
@@ -98,6 +101,117 @@ object ChatUnfurlProvider : SpaceUnfurlProvider {
                     }
                 }
             }
+        }
+    }
+
+    private fun StringBuilder.appendDocument(doc: RtDocument) {
+        doc.children.forEach { appendBlockNode(it, linePrefix = "") }
+    }
+
+    private fun StringBuilder.appendBlockNode(node: BlockNode, linePrefix: String, prefixForFirstLine: Boolean = false) {
+        fun appendWithLinePrefix(s: String, ix: Int) =
+            append("${if (ix > 0 || prefixForFirstLine) linePrefix else ""}$s")
+
+        when (node) {
+            is RtBlockquote -> {
+                node.children.forEachIndexed { ix, child ->
+                    appendWithLinePrefix("> ", ix)
+                    appendBlockNode(child, "$linePrefix\t")
+                }
+                if (linePrefix.isEmpty())
+                    appendLine()
+            }
+            is RtBulletList -> {
+                if (linePrefix.isEmpty())
+                    appendLine()
+                node.children.forEachIndexed { ix, child ->
+                    appendWithLinePrefix("*  ", ix)
+                    appendBlockNode(child, "$linePrefix\t")
+                }
+                if (linePrefix.isEmpty())
+                    appendLine()
+            }
+            is RtOrderedList -> {
+                if (linePrefix.isEmpty())
+                    appendLine()
+                node.children.forEachIndexed { ix, item ->
+                    appendWithLinePrefix("${ix + node.startNumber}.  ", ix)
+                    appendBlockNode(item, "$linePrefix\t")
+                }
+                if (linePrefix.isEmpty())
+                    appendLine()
+            }
+            is RtListItem -> {
+                node.children.forEachIndexed { ix, child ->
+                    appendBlockNode(child, linePrefix, prefixForFirstLine || ix > 0)
+                }
+            }
+            is RtCode -> {
+                appendLine("```")
+                node.children.forEach {
+                    appendInlineNode(it)
+                    appendLine()
+                }
+                appendLine("```")
+                appendLine()
+            }
+            is RtHeading -> {
+                if (prefixForFirstLine) {
+                    append(linePrefix)
+                }
+                node.children.forEach { appendInlineNode(it) }
+                appendLine()
+            }
+            is RtParagraph -> {
+                if (prefixForFirstLine) {
+                    append(linePrefix)
+                }
+                node.children.forEach { appendInlineNode(it) }
+                appendLine()
+            }
+        }
+    }
+
+    private fun StringBuilder.appendInlineNode(node: InlineNode) {
+        when (node) {
+            is RtBreak ->
+                appendLine()
+            is RtImage -> {}
+            is RtText -> {
+                node.marks.forEach { openMark(it) }
+                append(node.value)
+                node.marks.forEach { closeMark(it) }
+            }
+        }
+    }
+
+    private fun StringBuilder.openMark(mark: DocumentMark) {
+        when (mark) {
+            is RtStrikeThroughMark ->
+                append("~")
+            is RtLinkMark ->
+                append("<${mark.attrs.href}|")
+            is RtItalicMark ->
+                append("_")
+            is RtCodeMark ->
+                append("`")
+            is RtBoldMark ->
+                append("*")
+        }
+    }
+
+    private fun StringBuilder.closeMark(mark: DocumentMark) {
+        when (mark) {
+            is RtStrikeThroughMark ->
+                append("~")
+            is RtLinkMark ->
+                append(">")
+            is RtItalicMark ->
+                append("_")
+            is RtCodeMark ->
+                append("`")
+            is RtBoldMark ->
+                append("*")
         }
     }
 }
