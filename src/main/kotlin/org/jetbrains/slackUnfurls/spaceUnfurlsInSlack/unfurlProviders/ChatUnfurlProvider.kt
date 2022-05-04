@@ -190,7 +190,10 @@ object ChatUnfurlProvider : SpaceUnfurlProvider {
             is RtStrikeThroughMark ->
                 append("~")
             is RtLinkMark ->
-                append("<${mark.attrs.href}|")
+                if (mark.attrs.details.let { it is RtTeamLinkDetails || it is RtProfileLinkDetails || it is RtPredefinedMentionLinkDetails })
+                    append("@")
+                else
+                    append("<${mark.attrs.href}|")
             is RtItalicMark ->
                 append("_")
             is RtCodeMark ->
@@ -205,7 +208,8 @@ object ChatUnfurlProvider : SpaceUnfurlProvider {
             is RtStrikeThroughMark ->
                 append("~")
             is RtLinkMark ->
-                append(">")
+                if (!mark.attrs.details.let { it is RtTeamLinkDetails || it is RtProfileLinkDetails || it is RtPredefinedMentionLinkDetails })
+                    append(">")
             is RtItalicMark ->
                 append("_")
             is RtCodeMark ->
