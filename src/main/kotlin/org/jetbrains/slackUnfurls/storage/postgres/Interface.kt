@@ -16,15 +16,35 @@ import java.time.LocalDateTime
 class PostgresStorage(private val db: Database) : Storage {
 
     override val slackTeams = object : Storage.SlackTeams {
-        override suspend fun getById(teamId: String): SlackTeam? {
+
+        override suspend fun getForSpaceOrg(spaceOrgId: String): List<SlackTeam> {
             return tx {
-                SlackTeams.select { SlackTeams.id eq teamId }.firstOrNull()?.toSlackTeam()
+                (SlackTeams innerJoin Slack2Space innerJoin SpaceOrganizations)
+                    .slice(SlackTeams.columns)
+                    .select { SpaceOrganizations.clientId eq spaceOrgId }
+                    .map { it.toSlackTeam() }
             }
         }
 
-        override suspend fun getByDomain(domain: String): SlackTeam? {
+        override suspend fun getById(teamId: String, spaceOrgId: String?): SlackTeam? {
             return tx {
-                SlackTeams.select { SlackTeams.domain eq domain }.firstOrNull()?.toSlackTeam()
+                if (spaceOrgId != null) {
+                    (SlackTeams innerJoin Slack2Space)
+                        .slice(SlackTeams.columns)
+                        .select { (SlackTeams.id eq teamId) and (Slack2Space.spaceOrgId eq spaceOrgId) }
+                        .firstOrNull()?.toSlackTeam()
+                } else {
+                    SlackTeams.select { SlackTeams.id eq teamId }.firstOrNull()?.toSlackTeam()
+                }
+            }
+        }
+
+        override suspend fun getByDomain(domain: String, spaceOrgId: String): SlackTeam? {
+            return tx {
+                (SlackTeams innerJoin Slack2Space)
+                    .slice(SlackTeams.columns)
+                    .select { (SlackTeams.domain eq domain) and (Slack2Space.spaceOrgId eq spaceOrgId) }
+                    .firstOrNull()?.toSlackTeam()
             }
         }
 
@@ -51,16 +71,41 @@ class PostgresStorage(private val db: Database) : Storage {
             }
         }
 
-        override suspend fun create(teamId: String, domain: String, accessToken: ByteArray, refreshToken: ByteArray) {
+        override suspend fun create(teamId: String, domain: String, spaceOrgId: String, accessToken: ByteArray, refreshToken: ByteArray) {
             tx {
-                SlackTeams.deleteWhere { SlackTeams.id eq teamId }
-                SlackTeams.insert {
-                    it[this.id] = teamId
-                    it[this.domain] = domain
-                    it[this.created] = LocalDateTime.now()
-                    it[this.accessToken] = ExposedBlob(accessToken)
-                    it[this.refreshToken] = ExposedBlob(refreshToken)
+                val teamExists = SlackTeams.select { SlackTeams.id eq teamId }.forUpdate().any()
+                if (teamExists) {
+                    SlackTeams.update(
+                        where = { SlackTeams.id eq teamId },
+                        body = {
+                            it[this.accessToken] = ExposedBlob(accessToken)
+                            it[this.refreshToken] = ExposedBlob(refreshToken)
+                        }
+                    )
+                } else {
+                    SlackTeams.insert {
+                        it[this.id] = teamId
+                        it[this.domain] = domain
+                        it[this.created] = LocalDateTime.now()
+                        it[this.accessToken] = ExposedBlob(accessToken)
+                        it[this.refreshToken] = ExposedBlob(refreshToken)
+                    }
                 }
+
+                Slack2Space.insertIgnore {
+                    it[this.slackTeamId] = teamId
+                    it[this.spaceOrgId] = spaceOrgId
+                }
+            }
+        }
+
+        override suspend fun disconnectFromSpaceOrg(teamId: String, spaceOrgId: String) {
+            tx {
+                Slack2Space.deleteWhere { (Slack2Space.slackTeamId eq teamId) and (Slack2Space.spaceOrgId eq spaceOrgId) }
+                SlackOAuthSessions.deleteWhere { (SlackOAuthSessions.slackTeamId eq teamId) and (SlackOAuthSessions.spaceOrgId eq spaceOrgId) }
+                SpaceOAuthSessions.deleteWhere { (SpaceOAuthSessions.slackTeamId eq teamId) and (SpaceOAuthSessions.spaceOrgId eq spaceOrgId) }
+                SlackOAuthUserTokens.deleteWhere { (SlackOAuthUserTokens.slackTeamId eq teamId) and (SlackOAuthUserTokens.spaceOrgId eq spaceOrgId) }
+                SpaceOAuthUserTokens.deleteWhere { (SpaceOAuthUserTokens.slackTeamId eq teamId) and (SpaceOAuthUserTokens.spaceOrgId eq spaceOrgId) }
             }
         }
 
@@ -97,19 +142,26 @@ class PostgresStorage(private val db: Database) : Storage {
             }
         }
 
-        override suspend fun getById(clientId: String): SpaceOrg? {
+        override suspend fun getById(clientId: String, slackTeamId: String?): SpaceOrg? {
             return tx {
-                SpaceOrganizations
-                    .select { SpaceOrganizations.clientId eq clientId }
-                    .map { it.toSpaceOrg() }
-                    .firstOrNull()
+                if (slackTeamId != null) {
+                    (SpaceOrganizations innerJoin Slack2Space)
+                        .slice(SpaceOrganizations.columns)
+                        .select { (SpaceOrganizations.clientId eq clientId) and (Slack2Space.slackTeamId eq slackTeamId) }
+                        .firstOrNull()?.toSpaceOrg()
+                } else {
+                    SpaceOrganizations
+                        .select { SpaceOrganizations.clientId eq clientId }
+                        .firstOrNull()?.toSpaceOrg()
+                }
             }
         }
 
-        override suspend fun getByDomain(domain: String): SpaceOrg? {
+        override suspend fun getByDomain(domain: String, slackTeamId: String): SpaceOrg? {
             return tx {
-                SpaceOrganizations
-                    .select { SpaceOrganizations.domain eq domain }
+                (SpaceOrganizations innerJoin Slack2Space)
+                    .slice(SpaceOrganizations.columns)
+                    .select { (SpaceOrganizations.domain eq domain) and (Slack2Space.slackTeamId eq slackTeamId) }
                     .map { it.toSpaceOrg() }
                     .firstOrNull()
             }
@@ -242,7 +294,7 @@ class PostgresStorage(private val db: Database) : Storage {
                     deleteWhere {
                         (spaceOrgId eq params.spaceOrgId) and (spaceUserId eq params.spaceUser) and (slackTeamId eq params.slackTeamId)
                     }
-                    SlackOAuthSessions.insert {
+                    insert {
                         it[this.id] = id
                         it[this.spaceOrgId] = params.spaceOrgId
                         it[this.spaceUserId] = params.spaceUser

@@ -1,8 +1,8 @@
 package org.jetbrains.slackUnfurls.slackUnfurlsInSpace
 
 import com.slack.api.methods.response.oauth.OAuthV2AccessResponse
-import io.ktor.server.application.*
 import io.ktor.http.*
+import io.ktor.server.application.*
 import io.ktor.server.response.*
 import io.ktor.util.*
 import kotlinx.coroutines.channels.Channel
@@ -15,14 +15,16 @@ import org.jetbrains.slackUnfurls.routing.Routes
 import org.jetbrains.slackUnfurls.storage.SlackOAuthSession
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import space.jetbrains.api.runtime.resources.applications
+import space.jetbrains.api.runtime.types.ApplicationIdentifier
 
 
 suspend fun startUserAuthFlowInSlack(call: ApplicationCall, params: Routes.SlackOAuth, callbackUrl: String) {
     withSpaceLogContext(params.spaceOrgId, params.spaceUser, params.slackTeamId) {
         val flowId = generateNonce()
-        val slackDomain = db.slackTeams.getById(params.slackTeamId)?.domain
+        val slackDomain = db.slackTeams.getById(params.slackTeamId, params.spaceOrgId)?.domain
         if (slackDomain == null) {
-            log.warn("Application is not installed for Slack team")
+            log.warn("Slack workspace is not connected to Space org")
             return@withSpaceLogContext
         }
 
@@ -40,7 +42,7 @@ suspend fun startUserAuthFlowInSlack(call: ApplicationCall, params: Routes.Slack
             parameters.apply {
                 append("client_id", SlackCredentials.clientId)
                 append("user_scope", permissionScopes)
-                append("state", flowId)
+                append("state", "user-$flowId")
                 append("redirect_uri", callbackUrl)
             }
             build()
@@ -67,7 +69,11 @@ suspend fun onUserAuthFlowCompletedInSlack(call: ApplicationCall, flowId: String
     withSpaceLogContext(session.spaceOrgId, session.spaceUserId, session.slackTeamId, "flow-id" to flowId) {
         val response = requestOAuthToken(params.code)
         if (response == null || response.authedUser?.accessToken.isNullOrBlank()) {
-            call.respondError(HttpStatusCode.Unauthorized, log, "Could not fetch OAuth token from Slack (flow id = $flowId)")
+            call.respondError(
+                HttpStatusCode.Unauthorized,
+                log,
+                "Could not fetch OAuth token from Slack (flow id = $flowId)"
+            )
             return@withSpaceLogContext
         }
 
@@ -94,7 +100,7 @@ suspend fun onUserAuthFlowCompletedInSlack(call: ApplicationCall, flowId: String
     }
 }
 
-suspend fun onAppInstalledToSlackTeam(call: ApplicationCall, params: Routes.SlackOAuthCallback) {
+suspend fun onAppInstalledToSlackTeam(call: ApplicationCall, spaceOrgId: String, params: Routes.SlackOAuthCallback) {
     if (params.code.isNullOrBlank()) {
         call.respondError(HttpStatusCode.BadRequest, log, "Expected code query string parameter in request")
         return
@@ -104,7 +110,7 @@ suspend fun onAppInstalledToSlackTeam(call: ApplicationCall, params: Routes.Slac
     val accessToken = response?.accessToken
     val refreshToken = response?.refreshToken
     val teamId = response?.team?.id
-    withContext(MDCContext(mapOf(MDCParams.SLACK_TEAM to teamId.orEmpty()))) {
+    withContext(MDCContext(mapOf(MDCParams.SLACK_TEAM to teamId.orEmpty(), MDCParams.SPACE_ORG to spaceOrgId))) {
         if (accessToken.isNullOrBlank() || refreshToken.isNullOrBlank() || teamId.isNullOrBlank()) {
             val message = "Could not fetch OAuth token from Slack. " +
                     "Team id = $teamId, " +
@@ -123,9 +129,24 @@ suspend fun onAppInstalledToSlackTeam(call: ApplicationCall, params: Routes.Slac
             return@withContext
         }
 
-        db.slackTeams.create(teamId, teamResponse.team.domain, encrypt(accessToken), encrypt(refreshToken))
+        val spaceOrg = db.spaceOrgs.getById(spaceOrgId) ?: run {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                log,
+                "Unexpected value of the state query string parameter (flow id = $spaceOrgId)"
+            )
+            return@withContext
+        }
+        val spaceApp = getSpaceClient(spaceOrg).applications.getApplication(ApplicationIdentifier.Me)
 
-        call.respondSuccess(log, "Application successfully installed to Slack team")
+        db.slackTeams.create(teamId, teamResponse.team.domain, spaceOrgId, encrypt(accessToken), encrypt(refreshToken))
+
+        log.info("Slack team connected to Space org")
+        val backUrl = URLBuilder(spaceOrg.url).run {
+            path("extensions", "installedApplications", "${spaceApp.name}-${spaceApp.id}", "homepage")
+            buildString()
+        }
+        call.respondRedirect(backUrl)
     }
 }
 

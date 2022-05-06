@@ -25,7 +25,7 @@ fun HTML.successPage(message: String) = page {
 
 fun HTML.page(initHead: HEAD.() -> Unit = {}, initBody: DIV.() -> Unit) {
     head {
-        styleLink("/static/styles.css")
+        styleLink("/static/installPage.css")
         initHead()
     }
     body {

@@ -1,0 +1,85 @@
+body {
+    background-color: var(--background-color);
+    color: var(--text-color);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 15px;
+}
+
+.heading {
+    font-size: 22px;
+    font-weight: normal;
+    line-height: 30px;
+}
+
+#slack-teams-block {
+    padding-top: 8px;
+}
+
+#slack-teams-list-header {
+    font-size: 18px;
+    font-weight: 500;
+    line-height: 24px;
+}
+
+#slack-teams-list {
+    padding-inline-start: 0;
+    max-width: 750px;
+    list-style-type: none;
+}
+
+#slack-teams-list li {
+    padding: 8px;
+    border-bottom: 1px solid var(--row-separator-color);
+}
+
+#slack-teams-list li.empty-state {
+    display: flex;
+    justify-content: center;
+    border-top: 1px solid var(--row-separator-color);
+    color: var(--secondary-text-color);
+}
+
+.slack-teams-list-item {
+    display: flex;
+    justify-content: space-between;
+}
+
+a {
+    color: var(--link-color);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+#add-slack-team-btn {
+    display: flex;
+    color: var(--main-color);
+    cursor: pointer;
+    border-width: 1px;
+    border-style: solid;
+    border-color: var(--main-color-80);
+    border-radius: var(--border-radius-default);
+    background-color: var(--background-color);
+    width: fit-content;
+    text-decoration: none;
+    align-items: center;
+    padding: 10px;
+    gap: 10px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+@keyframes spinner {
+    to {transform: rotate(360deg);}
+}
+
+.spinner {
+    box-sizing: border-box;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--background-color);
+    border-top-color: var(--main-color);
+    animation: spinner .6s linear infinite;
+}

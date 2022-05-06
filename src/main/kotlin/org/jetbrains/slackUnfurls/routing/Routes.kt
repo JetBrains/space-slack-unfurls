@@ -1,8 +1,22 @@
 package org.jetbrains.slackUnfurls.routing
 
 import io.ktor.server.locations.*
+import kotlinx.serialization.Serializable
 
 object Routes {
+
+    /** Space-facing application endpoint for providing homepage html that will be displayed within iframe in Space */
+    @Location("/space/api/iframe/app-homepage")
+    data class SpaceAppHomepage(val backgroundColor: String)
+
+    @Location("/slack-teams")
+    object GetSlackTeams
+
+    @Location("/add-slack-team")
+    object AddSlackTeam
+
+    @Location("/remove-slack-team")
+    data class RemoveSlackTeam(val slackTeamId: String)
 
     /** Space-facing application endpoint for all types of payload */
     @Location("/space/api")
@@ -58,3 +72,9 @@ object Routes {
     @Location("/slack/interactive")
     object SlackInteractive
 }
+
+@Serializable
+data class SlackTeamsResponse(val teams: List<SlackTeamOut>, val canManage: Boolean)
+
+@Serializable
+data class SlackTeamOut(val id: String, val domain: String)

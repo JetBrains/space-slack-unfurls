@@ -23,9 +23,9 @@ import space.jetbrains.api.runtime.Space
 
 suspend fun startUserAuthFlowInSpace(call: ApplicationCall, params: Routes.SpaceOAuth, callbackUrl: String) {
     withSlackLogContext(params.slackTeamId, params.slackUserId, params.spaceOrgId) {
-        val spaceOrg = db.spaceOrgs.getById(params.spaceOrgId)
+        val spaceOrg = db.spaceOrgs.getById(params.spaceOrgId, params.slackTeamId)
             ?: run {
-                call.respondError(HttpStatusCode.BadRequest, log, "Application not installed to Space organization")
+                call.respondError(HttpStatusCode.BadRequest, log, "Space organization is not connected to Slack workspace")
                 return@withSlackLogContext
             }
 
@@ -76,9 +76,9 @@ suspend fun onUserAuthFlowCompletedInSpace(call: ApplicationCall, params: Routes
     }
 
     withSlackLogContext(session.slackTeamId, session.slackUserId, session.spaceOrgId) {
-        val spaceOrg = db.spaceOrgs.getById(session.spaceOrgId)
+        val spaceOrg = db.spaceOrgs.getById(session.spaceOrgId, session.slackTeamId)
         if (spaceOrg == null) {
-            call.respondError(HttpStatusCode.BadRequest, log, "Application not installed to Space organization")
+            call.respondError(HttpStatusCode.BadRequest, log, "Space organization is not connected to Slack workspace")
             return@withSlackLogContext
         }
 

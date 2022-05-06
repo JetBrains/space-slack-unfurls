@@ -8,6 +8,7 @@ import org.jetbrains.exposed.sql.javatime.datetime
 val allTables = listOf(
     SpaceOrganizations,
     SlackTeams,
+    Slack2Space,
     SlackOAuthSessions,
     SlackOAuthUserTokens,
     SpaceOAuthSessions,
@@ -34,6 +35,17 @@ object SlackTeams : IdTable<String>("SlackTeams") {
     val accessToken = blob("accessToken")
     val refreshToken = blob("refreshToken")
     val created = datetime("created")
+}
+
+object Slack2Space : Table("Slack2Space") {
+    val spaceOrgId = varchar("spaceOrgId", 36).references(SpaceOrganizations.clientId, onDelete = ReferenceOption.CASCADE)
+    val slackTeamId = varchar("slackTeamId", 100).references(SlackTeams.id, onDelete = ReferenceOption.CASCADE)
+
+    override val primaryKey = PrimaryKey(spaceOrgId, slackTeamId)
+
+    init {
+        uniqueIndex(slackTeamId, spaceOrgId)
+    }
 }
 
 object SlackOAuthSessions : IdTable<String>("SlackOAuthSessions") {

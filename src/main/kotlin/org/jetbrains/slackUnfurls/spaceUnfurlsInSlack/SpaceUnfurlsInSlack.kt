@@ -183,8 +183,8 @@ private suspend fun processLinkSharedEvent(payload: LinkSharedPayload, locations
 
         val linksToUnfurl = event.links
             .map { it.url to Url(it.url.replace("&amp;", "&")) }
-            .mapNotNullWithLogging(log, message = "links because application is not installed to Space org") { (link, url) ->
-                db.spaceOrgs.getByDomain(url.host)?.let { Triple(link, url, it) }
+            .mapNotNullWithLogging(log, message = "links because Slack workspace is not connected to Space org") { (link, url) ->
+                db.spaceOrgs.getByDomain(url.host, slackTeamId)?.let { Triple(link, url, it) }
             }
             .map { (link, url, spaceOrg) ->
                 val (matchResult, provide) = spaceUnfurlProviders.flatMap { it.matchers }

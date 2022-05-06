@@ -22,18 +22,20 @@ interface Storage {
 
 
     interface SlackTeams {
-        suspend fun getById(teamId: String): SlackTeam?
-        suspend fun getByDomain(domain: String): SlackTeam?
-        suspend fun create(teamId: String, domain: String, accessToken: ByteArray, refreshToken: ByteArray)
+        suspend fun getForSpaceOrg(spaceOrgId: String): List<SlackTeam>
+        suspend fun getById(teamId: String, spaceOrgId: String? = null): SlackTeam?
+        suspend fun getByDomain(domain: String, spaceOrgId: String): SlackTeam?
+        suspend fun create(teamId: String, domain: String, spaceOrgId: String, accessToken: ByteArray, refreshToken: ByteArray)
         suspend fun updateDomain(teamId: String, newDomain: String)
         suspend fun updateTokens(teamId: String, accessToken: ByteArray, refreshToken: ByteArray?)
+        suspend fun disconnectFromSpaceOrg(teamId: String, spaceOrgId: String)
         suspend fun delete(teamId: String)
     }
 
     interface SpaceOrganizations {
         suspend fun save(spaceAppInstance: SpaceAppInstance)
-        suspend fun getById(clientId: String): SpaceOrg?
-        suspend fun getByDomain(domain: String): SpaceOrg?
+        suspend fun getById(clientId: String, slackTeamId: String? = null): SpaceOrg?
+        suspend fun getByDomain(domain: String, slackTeamId: String): SpaceOrg?
         suspend fun updateLastUnfurlQueueItemEtag(clientId: String, lastEtag: Long?)
     }
 

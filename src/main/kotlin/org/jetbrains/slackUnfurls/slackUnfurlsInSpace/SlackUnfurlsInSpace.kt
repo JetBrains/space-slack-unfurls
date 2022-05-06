@@ -134,14 +134,18 @@ suspend fun onSpaceCall(call: ApplicationCall) {
 
 suspend fun ProcessingScope.onAppInstalledToSpaceOrg(spaceClient: SpaceClient) {
     val provideUnfurlsRightCode = "Unfurl.App.ProvideAttachment"
-    with(spaceClient.applications.authorizations.authorizedRights) {
-        requestRights(
-            ApplicationIdentifier.Me,
-            GlobalPermissionContextIdentifier,
-            listOf(provideUnfurlsRightCode)
-        )
-    }
+    spaceClient.applications.authorizations.authorizedRights.requestRights(
+        ApplicationIdentifier.Me,
+        GlobalPermissionContextIdentifier,
+        listOf(provideUnfurlsRightCode)
+    )
+
     spaceClient.applications.unfurls.domains.updateUnfurledDomains(listOf("slack.com"))
+
+    spaceClient.applications.setUiExtensions(
+        GlobalPermissionContextIdentifier,
+        listOf(ApplicationHomepageUiExtensionIn)
+    )
 
     val resourcePath = "static/slack.jpeg"
     val inputStream =
@@ -187,8 +191,8 @@ private suspend fun processUnfurlQueue(spaceClientId: String, locations: Locatio
                 .filterWithLogging(log, message = "unfurl queue items because these aren't message links") { (url, _) ->
                     url.fullPath.startsWith("/archives")
                 }
-                .mapNotNullWithLogging(log, message = "unfurl queue items because application is not installed to Slack workspace") { (url, item) ->
-                    db.slackTeams.getByDomain(url.host.removeSuffix(".slack.com"))?.let { it to item }
+                .mapNotNullWithLogging(log, message = "unfurl queue items because Slack workspace is not connected to Space org") { (url, item) ->
+                    db.slackTeams.getByDomain(url.host.removeSuffix(".slack.com"), spaceOrg.clientId)?.let { it to item }
                 }
                 .groupBy({ it.first to it.second.authorUserId }, { it.second })
                 .forEach { (key, itemsForSlackTeamAndUser) ->
@@ -498,13 +502,22 @@ private val processUnfurlsChannel = Channel<String>(Channel.BUFFERED)
 private val log: Logger = LoggerFactory.getLogger("SlackUnfurlsInSpace")
 
 /** Gets cached Space client with app token authentication */
-private fun getSpaceClient(spaceOrg: SpaceOrg): SpaceClient {
+fun getSpaceClient(spaceOrg: SpaceOrg): SpaceClient {
     val spaceAppInstance = SpaceAppInstance(
         clientId = spaceOrg.clientId,
         clientSecret = decrypt(spaceOrg.clientSecret),
         spaceServerUrl = spaceOrg.url
     )
     return SpaceClient(spaceHttpClient, spaceAppInstance, SpaceAuth.ClientCredentials())
+}
+
+fun getSpaceClient(spaceOrg: SpaceOrg, userAccessToken: String): SpaceClient {
+    val spaceAppInstance = SpaceAppInstance(
+        clientId = spaceOrg.clientId,
+        clientSecret = decrypt(spaceOrg.clientSecret),
+        spaceServerUrl = spaceOrg.url
+    )
+    return SpaceClient(spaceHttpClient, spaceAppInstance, SpaceAuth.Token(userAccessToken))
 }
 
 private val spaceHttpClient = ktorClientForSpace()

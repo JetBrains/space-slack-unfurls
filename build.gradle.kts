@@ -40,9 +40,9 @@ dependencies {
     implementation("io.ktor:ktor-server-host-common-jvm:$ktor_version")
     implementation("io.ktor:ktor-client-apache-jvm:$ktor_version")
     implementation("io.ktor:ktor-server-html-builder-jvm:$ktor_version")
-    implementation("io.ktor:ktor-server-content-negotiation-jvm:$ktor_version")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktor_version")
+    implementation("io.ktor:ktor-server-content-negotiation:$ktor_version")
     implementation("io.ktor:ktor-client-content-negotiation:$ktor_version")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktor_version")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.3.2")
     implementation("org.jetbrains.kotlinx:kotlinx-html-jvm:0.7.3")
@@ -60,6 +60,8 @@ dependencies {
     implementation("com.zaxxer:HikariCP:$hikari_version")
 
     implementation("org.jetbrains:space-sdk:${space_sdk_version}")
+
+    implementation("com.nimbusds:nimbus-jose-jwt:9.15.2")
 
     implementation("com.slack.api:slack-api-model:${slack_sdk_version}")
     implementation("com.slack.api:slack-api-client:${slack_sdk_version}")
