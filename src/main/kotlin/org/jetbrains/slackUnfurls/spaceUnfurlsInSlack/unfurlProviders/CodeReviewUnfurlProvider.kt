@@ -19,6 +19,7 @@ object CodeReviewUnfurlProvider : SpaceUnfurlProvider {
 
     override val spacePermissionScopes = listOf(
         "global:Project.CodeReview.View",
+        "global:Project.CodeReview.ViewComments",
         "global:VcsRepository.Read"
     )
 
@@ -49,11 +50,14 @@ object CodeReviewUnfurlProvider : SpaceUnfurlProvider {
         match: MatchResult,
         spaceClient: SpaceClient
     ): ChatUnfurlRequest.UnfurlDetail? {
-        if (url.parameters["message"] != null)
-            return null
-
         val reviewId = match.groups[1]?.value ?: return null
-        val channel = spaceClient.chats.channels.getChannel(ChannelIdentifier.Review(ReviewIdentifier.Id(reviewId))) {
+        val channelIdentifier = ChannelIdentifier.Review(ReviewIdentifier.Id(reviewId))
+
+        url.parameters["message"]?.let { messageId ->
+            return ChatUnfurlProvider.provideMessageUnfurl(url, channelIdentifier, messageId, spaceClient)
+        }
+
+        val channel = spaceClient.chats.channels.getChannel(channelIdentifier) {
             content {
                 project {
                     key()

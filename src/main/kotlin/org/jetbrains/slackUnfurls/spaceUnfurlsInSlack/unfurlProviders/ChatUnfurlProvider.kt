@@ -22,7 +22,9 @@ object ChatUnfurlProvider : SpaceUnfurlProvider {
     override val spacePermissionScopes = listOf(
         "global:Channel.ViewMessages",
         "global:Channel.ViewChannel",
-        "global:Profile.DirectMessages.ReadMessages"
+        "global:Profile.DirectMessages.ReadMessages",
+        "global:Article.View",
+        "global:Article.Comments.View"
     )
 
     private suspend fun matchByChannelId(
@@ -32,8 +34,12 @@ object ChatUnfurlProvider : SpaceUnfurlProvider {
     ): ChatUnfurlRequest.UnfurlDetail? {
         val contactKey = match.groups[1]?.value ?: return null
         val (channelId, messageId) = url.parameters["channel"] to url.parameters["message"]
-
         val channelIdentifier = if (channelId != null) ChannelIdentifier.Id(channelId) else ChannelIdentifier.ContactKey(contactKey)
+
+        if (messageId != null) {
+            return provideMessageUnfurl(url, channelIdentifier, messageId, spaceClient)
+        }
+
         val channel = spaceClient.chats.channels.getChannel(channelIdentifier) {
             contact {
                 ext {
@@ -43,62 +49,74 @@ object ChatUnfurlProvider : SpaceUnfurlProvider {
                 defaultName()
             }
         }
-        val channelUrl = url.copy(encodedPath = "/im/${channel.contact.key}", parameters = Parameters.Empty, fragment = "")
         val channelName = (channel.contact.ext as? M2SharedChannelContent)?.name ?: channel.contact.defaultName
 
-        return if (messageId != null) {
-            val message = spaceClient.chats.messages.getMessage(
-                ChatMessageIdentifier.InternalId(messageId),
-                channelIdentifier
-            ) {
-                author {
-                    details {
-                        user {
-                            name {
-                                firstName()
-                                lastName()
-                            }
-                        }
-                    }
+        return ChatUnfurlRequest.UnfurlDetail().apply {
+            blocks = withBlocks {
+                context {
+                    spaceLogo()
+                    markdownText("<$url|$channelName> in JetBrains Space")
+                }
+            }
+        }
+    }
+
+    suspend fun provideMessageUnfurl(url: Url, channelIdentifier: ChannelIdentifier, messageId: String, spaceClient: SpaceClient): ChatUnfurlRequest.UnfurlDetail? {
+        val channel = spaceClient.chats.channels.getChannel(channelIdentifier) {
+            contact {
+                ext {
                     name()
                 }
-                created()
-                text()
+                key()
+                defaultName()
             }
+        }
+        val channelUrl =
+            url.copy(encodedPath = "/im/${channel.contact.key}", parameters = Parameters.Empty, fragment = "")
+        val channelName = (channel.contact.ext as? M2SharedChannelContent)?.name ?: channel.contact.defaultName
 
-            val authorName = (message.author.details as? CUserPrincipalDetails)?.user?.name?.run { "$firstName $lastName" }
-                ?: message.author.name
-
-            val createdAt = message.created.toLocalDateTime(TimeZone.currentSystemDefault())
-                .toJavaLocalDateTime()
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
-
-            val messageText = buildString {
-                val spaceRichText = spaceClient.richText.parseMarkdown(message.text)
-                appendDocument(spaceRichText)
-            }
-
-            ChatUnfurlRequest.UnfurlDetail().apply {
-                blocks = withBlocks {
-                    context {
-                        markdownText("*$authorName* in <$channelUrl|$channelName> ($createdAt)")
-                    }
-                    section {
-                        markdownText(messageText)
-                    }
-                    context {
-                        spaceLogo()
-                        markdownText("<$url|View message>")
+        val message = spaceClient.chats.messages.getMessage(
+            ChatMessageIdentifier.InternalId(messageId),
+            channelIdentifier
+        ) {
+            author {
+                details {
+                    user {
+                        name {
+                            firstName()
+                            lastName()
+                        }
                     }
                 }
+                name()
             }
-        } else {
-            ChatUnfurlRequest.UnfurlDetail().apply {
-                blocks = withBlocks {
-                    context {
-                        spaceLogo()
-                        markdownText("<$url|$channelName> in JetBrains Space")
-                    }
+            created()
+            text()
+        }
+
+        val authorName = (message.author.details as? CUserPrincipalDetails)?.user?.name?.run { "$firstName $lastName" }
+            ?: message.author.name
+
+        val createdAt = message.created.toLocalDateTime(TimeZone.currentSystemDefault())
+            .toJavaLocalDateTime()
+            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+
+        val messageText = buildString {
+            val spaceRichText = spaceClient.richText.parseMarkdown(message.text)
+            appendDocument(spaceRichText)
+        }
+
+        return ChatUnfurlRequest.UnfurlDetail().apply {
+            blocks = withBlocks {
+                context {
+                    markdownText("*$authorName* in <$channelUrl|$channelName> ($createdAt)")
+                }
+                section {
+                    markdownText(messageText)
+                }
+                context {
+                    spaceLogo()
+                    markdownText("<$url|View message>")
                 }
             }
         }
