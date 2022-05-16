@@ -385,9 +385,11 @@ private suspend fun StringBuilder.appendRichTextElement(element: RichTextElement
 }
 
 private fun StringBuilder.appendStyled(style: TextStyle?, text: String) {
+    text.takeWhile { it.isWhitespace() }.takeUnless { it.isEmpty() }?.let { append(it) }
     putStyleMarker(style, true)
-    append(text)
+    append(text.trim())
     putStyleMarker(style, false)
+    text.takeLastWhile { it.isWhitespace() }.takeUnless { it.isEmpty() }?.let { append(it) }
 }
 
 private fun StringBuilder.putStyleMarker(style: TextStyle?, pre: Boolean) {
