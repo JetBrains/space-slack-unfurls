@@ -16,7 +16,7 @@ class SlackAppClient private constructor(
     accessToken: String,
     refreshToken: String,
     log: Logger
-) : BaseSlackClient(accessToken, refreshToken, log) {
+) : BaseSlackClient(accessToken, refreshToken, permissionScopes = null, log) {
 
     companion object {
         suspend fun tryCreate(teamId: String, log: Logger): SlackAppClient? =

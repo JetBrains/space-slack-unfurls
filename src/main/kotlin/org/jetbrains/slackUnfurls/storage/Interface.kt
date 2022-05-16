@@ -40,26 +40,40 @@ interface Storage {
     }
 
     interface SlackUserTokens {
-        suspend fun save(spaceOrgId: String, spaceUserId: String, slackTeamId: String, accessToken: ByteArray, refreshToken: ByteArray?)
+        suspend fun save(
+            spaceOrgId: String,
+            spaceUserId: String,
+            slackTeamId: String,
+            accessToken: ByteArray,
+            refreshToken: ByteArray?,
+            permissionScopes: String?
+        )
         suspend fun get(spaceOrgId: String, spaceUserId: String, slackTeamId: String): UserToken?
         suspend fun delete(spaceOrgId: String, spaceUserId: String, slackTeamId: String)
         suspend fun disableUnfurls(spaceOrgId: String, spaceUserId: String, slackTeamId: String)
     }
 
     interface SlackOAuthSessions {
-        suspend fun create(id: String, params: Routes.SlackOAuth)
+        suspend fun create(id: String, params: Routes.SlackOAuth, permissionScopes: String)
         suspend fun getOnce(id: String): SlackOAuthSession?
     }
 
     interface SpaceUserTokens {
-        suspend fun save(slackTeamId: String, slackUserId: String, spaceOrgId: String, accessToken: ByteArray, refreshToken: ByteArray)
+        suspend fun save(
+            slackTeamId: String,
+            slackUserId: String,
+            spaceOrgId: String,
+            accessToken: ByteArray,
+            refreshToken: ByteArray,
+            permissionScopes: String?
+        )
         suspend fun get(key: SlackUserKey): UserToken?
         suspend fun delete(slackTeamId: String, slackUserId: String, spaceOrgId: String)
         suspend fun disableUnfurls(slackTeamId: String, slackUserId: String, spaceOrgId: String)
     }
 
     interface SpaceOAuthSessions {
-        suspend fun create(id: String, params: Routes.SpaceOAuth)
+        suspend fun create(id: String, params: Routes.SpaceOAuth, permissionScopes: String)
         suspend fun getOnce(id: String): SpaceOAuthSession?
     }
 
@@ -78,11 +92,23 @@ data class SlackUserKey(val spaceOrgId: String, val slackTeamId: String, val sla
 fun SpaceOrg.toSpaceAppInstance() =
     SpaceAppInstance(clientId = clientId, clientSecret = decrypt(clientSecret), spaceServerUrl = url)
 
-class SlackOAuthSession(val spaceOrgId: String, val spaceUserId: String, val slackTeamId: String, val backUrl: String?)
+class SlackOAuthSession(
+    val spaceOrgId: String,
+    val spaceUserId: String,
+    val slackTeamId: String,
+    val backUrl: String?,
+    val permissionScopes: String?
+)
 
 sealed class UserToken {
     object UnfurlsDisabled: UserToken()
-    class Value(val accessToken: ByteArray, val refreshToken: ByteArray): UserToken()
+    class Value(val accessToken: ByteArray, val refreshToken: ByteArray, val permissionScopes: String?): UserToken()
 }
 
-class SpaceOAuthSession(val slackTeamId: String, val slackUserId: String, val spaceOrgId: String, val backUrl: String?)
+class SpaceOAuthSession(
+    val slackTeamId: String,
+    val slackUserId: String,
+    val spaceOrgId: String,
+    val backUrl: String?,
+    val permissionScopes: String?
+)

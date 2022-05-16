@@ -31,13 +31,14 @@ suspend fun startUserAuthFlowInSpace(call: ApplicationCall, params: Routes.Space
 
         val flowId = generateNonce()
         db.spaceUserTokens.delete(params.slackTeamId, params.slackUserId, params.spaceOrgId)
-        db.spaceOAuthSessions.create(flowId, params)
+        val permissionScopes = spaceUserPermissionScopes.joinToString(" ")
+        db.spaceOAuthSessions.create(flowId, params, permissionScopes)
 
         log.info("Started user OAuth flow in Space. Flow id is $flowId")
 
         val authUrl = Space.authCodeSpaceUrl(
             spaceOrg.toSpaceAppInstance(),
-            scope = spaceUserPermissionScopes.joinToString(" "),
+            scope = permissionScopes,
             state = flowId,
             redirectUri = callbackUrl,
             requestCredentials = OAuthRequestCredentials.DEFAULT,
@@ -98,7 +99,8 @@ suspend fun onUserAuthFlowCompletedInSpace(call: ApplicationCall, params: Routes
             slackUserId = session.slackUserId,
             spaceOrgId = session.spaceOrgId,
             accessToken = encrypt(accessToken),
-            refreshToken = encrypt(refreshToken)
+            refreshToken = encrypt(refreshToken),
+            permissionScopes = session.permissionScopes
         )
 
         processDeferredLinkSharedEvents(

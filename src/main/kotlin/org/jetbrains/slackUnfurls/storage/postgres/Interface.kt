@@ -158,13 +158,21 @@ class PostgresStorage(private val db: Database) : Storage {
     }
 
     override val slackUserTokens = object : Storage.SlackUserTokens {
-        override suspend fun save(spaceOrgId: String, spaceUserId: String, slackTeamId: String, accessToken: ByteArray, refreshToken: ByteArray?) {
+        override suspend fun save(
+            spaceOrgId: String,
+            spaceUserId: String,
+            slackTeamId: String,
+            accessToken: ByteArray,
+            refreshToken: ByteArray?,
+            permissionScopes: String?
+        ) {
             tx {
                 val updated = SlackOAuthUserTokens.update(
                     where = {
                         with(SlackOAuthUserTokens) { by(spaceOrgId, spaceUserId, slackTeamId) }
                     },
                     body = {
+                        it[SlackOAuthUserTokens.permissionScopes] = permissionScopes
                         it[SlackOAuthUserTokens.accessToken] = ExposedBlob(accessToken)
                         if (refreshToken != null) {
                             it[this.refreshToken] = ExposedBlob(refreshToken)
@@ -182,6 +190,7 @@ class PostgresStorage(private val db: Database) : Storage {
                         it[this.slackTeamId] = slackTeamId
                         it[this.accessToken] = ExposedBlob(accessToken)
                         it[this.refreshToken] = ExposedBlob(refreshToken)
+                        it[this.permissionScopes] = permissionScopes
                         it[this.unfurlsDisabled] = false
                     }
                 }
@@ -203,8 +212,9 @@ class PostgresStorage(private val db: Database) : Storage {
                         else {
                             val accessToken = it[SlackOAuthUserTokens.accessToken]
                             val refreshToken = it[SlackOAuthUserTokens.refreshToken]
+                            val permissionScopes = it[SlackOAuthUserTokens.permissionScopes]
                             if (accessToken != null && refreshToken != null)
-                                UserToken.Value(accessToken.bytes, refreshToken.bytes)
+                                UserToken.Value(accessToken.bytes, refreshToken.bytes, permissionScopes)
                             else
                                 null
                         }
@@ -249,7 +259,7 @@ class PostgresStorage(private val db: Database) : Storage {
     }
 
     override val slackOAuthSessions = object : Storage.SlackOAuthSessions {
-        override suspend fun create(id: String, params: Routes.SlackOAuth) {
+        override suspend fun create(id: String, params: Routes.SlackOAuth, permissionScopes: String) {
             tx {
                 SlackOAuthSessions.run {
                     deleteWhere {
@@ -261,6 +271,7 @@ class PostgresStorage(private val db: Database) : Storage {
                         it[this.spaceUserId] = params.spaceUser
                         it[this.slackTeamId] = params.slackTeamId
                         it[this.backUrl] = params.backUrl
+                        it[this.permissionScopes] = permissionScopes
                     }
                 }
             }
@@ -275,7 +286,8 @@ class PostgresStorage(private val db: Database) : Storage {
                             spaceOrgId = session[SlackOAuthSessions.spaceOrgId],
                             spaceUserId = session[SlackOAuthSessions.spaceUserId],
                             slackTeamId = session[SlackOAuthSessions.slackTeamId],
-                            backUrl = session[SlackOAuthSessions.backUrl]
+                            backUrl = session[SlackOAuthSessions.backUrl],
+                            permissionScopes = session[SlackOAuthSessions.permissionScopes]
                         )
                     }
             }
@@ -288,7 +300,8 @@ class PostgresStorage(private val db: Database) : Storage {
             slackUserId: String,
             spaceOrgId: String,
             accessToken: ByteArray,
-            refreshToken: ByteArray
+            refreshToken: ByteArray,
+            permissionScopes: String?
         ) {
             tx {
                 with (SpaceOAuthUserTokens) {
@@ -302,6 +315,7 @@ class PostgresStorage(private val db: Database) : Storage {
                     it[this.spaceOrgId] = spaceOrgId
                     it[this.accessToken] = ExposedBlob(accessToken)
                     it[this.refreshToken] = ExposedBlob(refreshToken)
+                    it[this.permissionScopes] = permissionScopes
                     it[this.unfurlsDisabled] = false
                 }
             }
@@ -320,8 +334,9 @@ class PostgresStorage(private val db: Database) : Storage {
                         else {
                             val accessToken = it[SpaceOAuthUserTokens.accessToken]
                             val refreshToken = it[SpaceOAuthUserTokens.refreshToken]
+                            val permissionScopes = it[SpaceOAuthUserTokens.permissionScopes]
                             if (accessToken != null && refreshToken != null)
-                                UserToken.Value(accessToken.bytes, refreshToken.bytes)
+                                UserToken.Value(accessToken.bytes, refreshToken.bytes, permissionScopes)
                             else
                                 null
                         }
@@ -357,7 +372,7 @@ class PostgresStorage(private val db: Database) : Storage {
     }
 
     override val spaceOAuthSessions = object : Storage.SpaceOAuthSessions {
-        override suspend fun create(id: String, params: Routes.SpaceOAuth) {
+        override suspend fun create(id: String, params: Routes.SpaceOAuth, permissionScopes: String) {
             tx {
                 SpaceOAuthSessions.run {
                     run {
@@ -370,6 +385,7 @@ class PostgresStorage(private val db: Database) : Storage {
                         it[slackTeamId] = params.slackTeamId
                         it[slackUserId] = params.slackUserId
                         it[spaceOrgId] = params.spaceOrgId
+                        it[this.permissionScopes] = permissionScopes
                     }
                 }
             }
@@ -384,7 +400,8 @@ class PostgresStorage(private val db: Database) : Storage {
                             slackTeamId = session[SpaceOAuthSessions.slackTeamId],
                             slackUserId = session[SpaceOAuthSessions.slackUserId],
                             spaceOrgId = session[SpaceOAuthSessions.spaceOrgId],
-                            backUrl = session[SpaceOAuthSessions.backUrl]
+                            backUrl = session[SpaceOAuthSessions.backUrl],
+                            permissionScopes = session[SpaceOAuthSessions.permissionScopes]
                         )
                     }
             }
@@ -433,7 +450,7 @@ fun initPostgres() : PostgresStorage? {
         init {
             driverClassName = "org.postgresql.Driver"
             jdbcUrl = postgresUrl
-                .copy(protocol = URLProtocol("jdbc:postgresql", 5432), user = null, password = null)
+                .copy(protocol = URLProtocol("jdbc:postgresql", postgresUrl.port), user = null, password = null)
                 .toString()
             username = postgresUrl.user
             password = postgresUrl.password

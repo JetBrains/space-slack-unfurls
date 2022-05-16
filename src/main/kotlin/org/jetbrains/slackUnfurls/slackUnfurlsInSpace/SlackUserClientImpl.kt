@@ -14,8 +14,9 @@ class SlackUserClientImpl(
     private val context: SpaceUserKey,
     accessToken: String,
     refreshToken: String,
+    permissionScopes: String?,
     log: Logger
-) : BaseSlackClient(accessToken, refreshToken, log) {
+) : BaseSlackClient(accessToken, refreshToken, permissionScopes, log) {
 
     suspend fun fetchMessage(channelId: String, messageId: String) = fetch("fetching message") { accessToken ->
         slackApiClient.methods(accessToken).conversationsHistory {
@@ -60,10 +61,9 @@ class SlackUserClientImpl(
 
 
     override suspend fun reloadTokensFromDb(): Tokens? {
-        return when (val tokens =
-            db.slackUserTokens.get(context.spaceOrgId, context.spaceUserId, context.slackTeamId)) {
+        return when (val tokens = db.slackUserTokens.get(context.spaceOrgId, context.spaceUserId, context.slackTeamId)) {
             is UserToken.Value ->
-                Tokens(decrypt(tokens.accessToken), decrypt(tokens.refreshToken))
+                Tokens(decrypt(tokens.accessToken), decrypt(tokens.refreshToken), tokens.permissionScopes)
             is UserToken.UnfurlsDisabled ->
                 null
             null -> {
@@ -79,7 +79,8 @@ class SlackUserClientImpl(
             spaceUserId = context.spaceUserId,
             slackTeamId = context.slackTeamId,
             accessToken = encrypt(tokens.accessToken),
-            refreshToken = encrypt(tokens.refreshToken)
+            refreshToken = encrypt(tokens.refreshToken),
+            permissionScopes = tokens.permissionScopes
         )
     }
 
@@ -127,7 +128,7 @@ sealed class SlackUserClient {
             )) {
                 is UserToken.Value ->
                     Instance(
-                        SlackUserClientImpl(context, decrypt(tokens.accessToken), decrypt(tokens.refreshToken), log)
+                        SlackUserClientImpl(context, decrypt(tokens.accessToken), decrypt(tokens.refreshToken), tokens.permissionScopes, log)
                     )
                 is UserToken.UnfurlsDisabled ->
                     UnfurlsDisabled

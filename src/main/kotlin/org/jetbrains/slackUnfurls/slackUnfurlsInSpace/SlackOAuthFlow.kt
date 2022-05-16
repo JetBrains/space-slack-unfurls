@@ -31,13 +31,15 @@ suspend fun startUserAuthFlowInSlack(call: ApplicationCall, params: Routes.Slack
             spaceUserId = params.spaceUser,
             slackTeamId = params.slackTeamId
         )
-        db.slackOAuthSessions.create(flowId, params)
+
+        val permissionScopes = slackPermissionScopes.joinToString(",")
+        db.slackOAuthSessions.create(flowId, params, permissionScopes)
         log.info("Started user OAuth flow in Slack. Flow id is $flowId")
 
         val authUrl = with(URLBuilder("https://$slackDomain.slack.com/oauth/v2/authorize")) {
             parameters.apply {
                 append("client_id", SlackCredentials.clientId)
-                append("user_scope", slackPermissionScopes.joinToString(","))
+                append("user_scope", permissionScopes)
                 append("state", flowId)
                 append("redirect_uri", callbackUrl)
             }
@@ -74,7 +76,8 @@ suspend fun onUserAuthFlowCompletedInSlack(call: ApplicationCall, flowId: String
             spaceUserId = session.spaceUserId,
             slackTeamId = session.slackTeamId,
             accessToken = encrypt(response.authedUser.accessToken),
-            refreshToken = encrypt(response.authedUser.refreshToken)
+            refreshToken = encrypt(response.authedUser.refreshToken),
+            permissionScopes = session.permissionScopes
         )
         processUnfurlsAfterAuthChannel.send(session)
 

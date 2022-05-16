@@ -152,6 +152,7 @@ private sealed class LinkToUnfurl {
         val originalLink: String,
         val url: Url,
         val spaceOrg: SpaceOrg,
+        val upToDateUserTokenPermissions: Boolean,
         private val spaceClient: SpaceClient,
         private val matchResult: MatchResult,
         private val provide: UnfurlProvider
@@ -200,7 +201,8 @@ private suspend fun processLinkSharedEvent(payload: LinkSharedPayload, locations
                 when (val spaceUserToken = db.spaceUserTokens.get(key)) {
                     is UserToken.Value -> {
                         val spaceClient = getSpaceClient(spaceOrg, spaceUserToken)
-                        LinkToUnfurl.ReadyToUnfurl(link, url, spaceOrg, spaceClient, matchResult, provide)
+                        val upToDateUserTokenPermissions = spaceUserToken.permissionScopes == spaceUserPermissionScopes.joinToString(" ")
+                        LinkToUnfurl.ReadyToUnfurl(link, url, spaceOrg, upToDateUserTokenPermissions, spaceClient, matchResult, provide)
                     }
                     is UserToken.UnfurlsDisabled ->
                         LinkToUnfurl.UnfurlsDisabledByUser
@@ -236,12 +238,8 @@ private suspend fun processLinkSharedEvent(payload: LinkSharedPayload, locations
                         "Error = '$errorCode', description = '$errorDescription'"
                     else
                         ""
-                    if (ex is AuthenticationRequiredException || errorCode == "invalid_scope") {
-                        db.spaceUserTokens.delete(
-                            slackTeamId = slackTeamId,
-                            slackUserId = slackUserId,
-                            spaceOrgId = spaceOrgId
-                        )
+                    if (shouldResetUserToken(ex, errorCode, item.upToDateUserTokenPermissions)) {
+                        db.spaceUserTokens.delete(slackTeamId, slackUserId, spaceOrgId)
                         log.error("Error providing unfurl, dropped user refresh token for space. $message", ex)
                         needRequestAuth.add(LinkToUnfurl.UserAuthRequired(item.spaceOrg))
                     } else {
@@ -288,6 +286,9 @@ private suspend fun processLinkSharedEvent(payload: LinkSharedPayload, locations
         }
     }
 }
+
+private fun shouldResetUserToken(ex: RequestException, errorCode: String?, upToDateUserTokenPermissions: Boolean) =
+    ex is AuthenticationRequiredException || errorCode == "invalid_scope" || (ex is PermissionDeniedException && !upToDateUserTokenPermissions)
 
 private fun authRequestMessage(spaceOrg: SpaceOrg, spaceOAuthUrl: String) = withBlocks {
     section {
@@ -341,11 +342,13 @@ private fun getSpaceClient(spaceOrg: SpaceOrg, userTokens: UserToken.Value): Spa
         clientSecret = decrypt(spaceOrg.clientSecret),
         spaceServerUrl = spaceOrg.url
     )
-    // TODO - somehow hook into the token refresh process and save new refresh token to DB in case Space issues a new one
     return SpaceClient(
         spaceHttpClient,
         spaceAppInstance,
-        SpaceAuth.RefreshToken(decrypt(userTokens.refreshToken), spaceUserPermissionScopes.joinToString(" "))
+        SpaceAuth.RefreshToken(
+            decrypt(userTokens.refreshToken),
+            scope = userTokens.permissionScopes ?: spaceUserPermissionScopes.joinToString(" ")
+        )
     )
 }
 

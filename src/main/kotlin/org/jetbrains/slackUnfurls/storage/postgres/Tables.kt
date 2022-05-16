@@ -44,6 +44,7 @@ object SlackOAuthSessions : IdTable<String>("SlackOAuthSessions") {
     val spaceUserId = varchar("spaceUserId", 20)
     val slackTeamId = varchar("slackTeamId", 100).references(SlackTeams.id, onDelete = ReferenceOption.CASCADE)
     val backUrl = varchar("backUrl", 1024).nullable()
+    val permissionScopes = text("permissionScopes").nullable()
 
     init {
         uniqueIndex(spaceOrgId, spaceUserId, slackTeamId)
@@ -56,6 +57,7 @@ object SlackOAuthUserTokens : Table("SlackOAuthUserTokens") {
     val slackTeamId = varchar("slackTeamId", 100).references(SlackTeams.id, onDelete = ReferenceOption.CASCADE)
     val accessToken = blob("accessToken").nullable()
     val refreshToken = blob("refreshToken").nullable()
+    val permissionScopes = text("permissionScopes").nullable()
     val unfurlsDisabled = bool("unfurlsDisabled")
 
     init {
@@ -77,6 +79,7 @@ object SpaceOAuthSessions : IdTable<String>("SpaceOAuthSessions") {
     val slackUserId = varchar("slackUserId", 256)
     val spaceOrgId = varchar("spaceOrgId", 36).references(SpaceOrganizations.clientId, onDelete = ReferenceOption.CASCADE)
     val backUrl = varchar("oAuthBackUrl", 1024).nullable()
+    val permissionScopes = text("permissionScopes").nullable()
 
     init {
         uniqueIndex(slackTeamId, slackUserId, spaceOrgId)
@@ -90,6 +93,7 @@ object SpaceOAuthUserTokens : Table("SpaceOAuthUserTokens") {
     val unfurlsDisabled = bool("unfurlsDisabled")
     val accessToken = blob("accessToken").nullable()
     val refreshToken = blob("refreshToken").nullable()
+    val permissionScopes = text("permissionScopes").nullable()
 
     init {
         uniqueIndex(slackTeamId, slackUserId, spaceOrgId)

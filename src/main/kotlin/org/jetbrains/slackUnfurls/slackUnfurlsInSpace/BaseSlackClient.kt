@@ -10,10 +10,11 @@ import org.slf4j.Logger
 abstract class BaseSlackClient(
     accessToken: String,
     refreshToken: String,
+    permissionScopes: String?,
     protected val log: Logger
 ) {
 
-    private var tokens: Tokens? = Tokens(accessToken, refreshToken)
+    private var tokens: Tokens? = Tokens(accessToken, refreshToken, permissionScopes)
 
     protected suspend fun <T : SlackApiTextResponse> fetch(action: String, handler: suspend (String) -> T?) : T? {
         return tokens?.let {
@@ -64,6 +65,7 @@ abstract class BaseSlackClient(
     private suspend fun tryRefreshToken() {
         log.info("Refreshing token...")
         val refreshToken = tokens?.refreshToken ?: return
+        val permissionScopes = tokens?.permissionScopes
         tokens = null
 
         val response = slackApiClient.methods().oauthV2Access {
@@ -97,8 +99,12 @@ abstract class BaseSlackClient(
 
         val newRefreshToken =
             (response.refreshToken ?: response.authedUser?.refreshToken).takeUnless { it == refreshToken }
-        log.info("Access token refreshed, ${if (newRefreshToken != null) "with" else "without"} new refresh token")
-        tokens = Tokens(newAccessToken, newRefreshToken ?: refreshToken).also {
+        log.info("Access token refreshed, ${if (newRefreshToken != null) "with" else "without"} new refresh token. Permission scope = ${response.authedUser?.scope}")
+        tokens = Tokens(
+            newAccessToken,
+            refreshToken = newRefreshToken ?: refreshToken,
+            permissionScopes = response.authedUser?.scope ?: permissionScopes
+        ).also {
             updateTokensInDb(it)
         }
     }
@@ -115,7 +121,7 @@ abstract class BaseSlackClient(
     protected abstract suspend fun resetToken()
 
 
-    protected data class Tokens(val accessToken: String, val refreshToken: String)
+    protected data class Tokens(val accessToken: String, val refreshToken: String, val permissionScopes: String? = null)
 }
 
 val slackApiClient: Slack = Slack.getInstance()
