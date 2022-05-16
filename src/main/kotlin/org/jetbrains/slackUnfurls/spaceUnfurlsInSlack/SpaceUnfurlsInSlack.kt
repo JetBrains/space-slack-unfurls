@@ -216,11 +216,53 @@ private suspend fun processLinkSharedEvent(payload: LinkSharedPayload, locations
             }
 
         val readyToUnfurl = linksToUnfurl.filterIsInstance<LinkToUnfurl.ReadyToUnfurl>()
-        val needRequestAuth = linksToUnfurl.filterIsInstance<LinkToUnfurl.UserAuthRequired>()
+        val needRequestAuth = linksToUnfurl.filterIsInstance<LinkToUnfurl.UserAuthRequired>().toMutableList()
 
-        // prompt user to pass authentication in Space if all Space links in the message require authentication
-        // but go straight to unfurling links if we can unfurl at least one of them
-        if (readyToUnfurl.isEmpty() && needRequestAuth.isNotEmpty()) {
+        // generate unfurls
+        val unfurls = readyToUnfurl.mapNotNull { item ->
+            val spaceOrgId = item.spaceOrg.clientId
+            withSlackLogContext(slackTeamId, slackUserId, spaceOrgId) {
+                log.info("Providing unfurls for a link")
+                try {
+                    item.provideUnfurlDetail()?.let { item.originalLink to it }
+                } catch (ex: RequestException) {
+                    val responseJson = ex.response.readText(Charsets.UTF_8).let(::parseJson)
+                    val (errorCode, errorDescription) = responseJson?.let {
+                        val error = it.get("error")?.takeIf { it.isTextual }?.asText()
+                        val errorDescription = it.get("error_description")?.takeIf { it.isTextual }?.asText()
+                        error to errorDescription
+                    } ?: (null to null)
+                    val message = if (errorCode != null && errorDescription != null)
+                        "Error = '$errorCode', description = '$errorDescription'"
+                    else
+                        ""
+                    if (ex is AuthenticationRequiredException || errorCode == "invalid_scope") {
+                        db.spaceUserTokens.delete(
+                            slackTeamId = slackTeamId,
+                            slackUserId = slackUserId,
+                            spaceOrgId = spaceOrgId
+                        )
+                        log.error("Error providing unfurl, dropped user refresh token for space. $message", ex)
+                        needRequestAuth.add(LinkToUnfurl.UserAuthRequired(item.spaceOrg))
+                    } else {
+                        log.error("Error providing unfurl. $message", ex)
+                    }
+                    null
+                } catch (ex: Exception) {
+                    log.error("Error providing unfurl", ex)
+                    null
+                }
+            }
+        }
+
+        if (unfurls.isNotEmpty()) {
+            slackAppClient.sendUnfurlsToSlack {
+                it.unfurlId(event.unfurlId)
+                it.source(event.source)
+                it.unfurls(unfurls.associate { it })
+            }
+        } else if (needRequestAuth.isNotEmpty()) {
+            // prompt user to pass authentication in Space if all Space links in the message require authentication
             val spaceOrg = needRequestAuth.first().spaceOrg
             val spaceOAuthUrl = "$entrypointUrl/${
                 locations.href(
@@ -243,46 +285,6 @@ private suspend fun processLinkSharedEvent(payload: LinkSharedPayload, locations
                 spaceOrgId = spaceOrg.clientId,
                 event = gson.toJson(payload)
             )
-            return@withSlackLogContext
-        }
-
-        // generate unfurls
-        val unfurls = readyToUnfurl.mapNotNull { item ->
-            val spaceOrgId = item.spaceOrg.clientId
-            withSlackLogContext(slackTeamId, slackUserId, spaceOrgId) {
-                log.info("Providing unfurls for a link")
-                try {
-                    item.provideUnfurlDetail()?.let { item.originalLink to it }
-                } catch (ex: Exception) {
-                    val errorDetails = if (ex is RequestException) {
-                        val responseJson = ex.response.readText(Charsets.UTF_8).let(::parseJson)
-                        val message = responseJson?.let {
-                            val error = it.get("error")?.takeIf { it.isTextual }?.asText()
-                            val errorDescription = it.get("error_description")?.takeIf { it.isTextual }?.asText()
-                            "Error = '$error', description = '$errorDescription'"
-                        }.orEmpty()
-                        if (ex is AuthenticationRequiredException) {
-                            db.spaceUserTokens.delete(
-                                slackTeamId = slackTeamId,
-                                slackUserId = slackUserId,
-                                spaceOrgId = spaceOrgId
-                            )
-                            "Dropped user refresh token for Space. $message"
-                        } else message
-                    } else ""
-
-                    log.error("Error providing unfurl. $errorDetails", ex)
-                    null
-                }
-            }
-        }
-
-        if (unfurls.isNotEmpty()) {
-            slackAppClient.sendUnfurlsToSlack {
-                it.unfurlId(event.unfurlId)
-                it.source(event.source)
-                it.unfurls(unfurls.associate { it })
-            }
         }
     }
 }
