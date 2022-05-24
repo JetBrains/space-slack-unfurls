@@ -57,11 +57,11 @@ suspend fun onUserAuthFlowCompletedInSlack(call: ApplicationCall, flowId: String
         return
     }
 
-    val session = db.slackOAuthSessions.getOnce(flowId) ?: run {
+    val session = db.slackOAuthSessions.get(flowId) ?: run {
         call.respondError(
             HttpStatusCode.BadRequest,
             log,
-            "Unexpected value of the state query string parameter (flow id = $flowId)"
+            "Authentication session has expired, try again (flow id = $flowId)"
         )
         return
     }

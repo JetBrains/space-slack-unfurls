@@ -57,9 +57,11 @@ object SlackOAuthSessions : IdTable<String>("SlackOAuthSessions") {
     val slackTeamId = varchar("slackTeamId", 100).references(SlackTeams.id, onDelete = ReferenceOption.CASCADE)
     val backUrl = varchar("backUrl", 1024).nullable()
     val permissionScopes = text("permissionScopes").nullable()
+    val created = datetime("created").nullable()
 
     init {
         uniqueIndex(spaceOrgId, spaceUserId, slackTeamId)
+        index(isUnique = false, created)
     }
 }
 
@@ -92,9 +94,11 @@ object SpaceOAuthSessions : IdTable<String>("SpaceOAuthSessions") {
     val spaceOrgId = varchar("spaceOrgId", 36).references(SpaceOrganizations.clientId, onDelete = ReferenceOption.CASCADE)
     val backUrl = varchar("oAuthBackUrl", 1024).nullable()
     val permissionScopes = text("permissionScopes").nullable()
+    val created = datetime("created").nullable()
 
     init {
         uniqueIndex(slackTeamId, slackUserId, spaceOrgId)
+        index(isUnique = false, created)
     }
 }
 

@@ -1,5 +1,7 @@
 package org.jetbrains.slackUnfurls.storage
 
+import io.ktor.server.application.*
+import kotlinx.coroutines.Job
 import org.jetbrains.slackUnfurls.decrypt
 import org.jetbrains.slackUnfurls.routing.Routes
 import space.jetbrains.api.runtime.SpaceAppInstance
@@ -55,7 +57,8 @@ interface Storage {
 
     interface SlackOAuthSessions {
         suspend fun create(id: String, params: Routes.SlackOAuth, permissionScopes: String)
-        suspend fun getOnce(id: String): SlackOAuthSession?
+        suspend fun get(id: String): SlackOAuthSession?
+        fun Application.launchCleanup(): Job
     }
 
     interface SpaceUserTokens {
@@ -74,7 +77,8 @@ interface Storage {
 
     interface SpaceOAuthSessions {
         suspend fun create(id: String, params: Routes.SpaceOAuth, permissionScopes: String)
-        suspend fun getOnce(id: String): SpaceOAuthSession?
+        suspend fun get(id: String): SpaceOAuthSession?
+        fun Application.launchCleanup(): Job
     }
 
     interface DeferredSlackLinkUnfurlEvents {

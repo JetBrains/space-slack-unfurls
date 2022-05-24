@@ -65,12 +65,12 @@ suspend fun onUserAuthFlowCompletedInSpace(call: ApplicationCall, params: Routes
         return
     }
 
-    val session = db.spaceOAuthSessions.getOnce(params.state)
+    val session = db.spaceOAuthSessions.get(params.state)
     if (session == null) {
         call.respondError(
             HttpStatusCode.BadRequest,
             log,
-            "Unexpected value of the state query string parameter (flow id = ${params.state})"
+            "Authentication session has expired, try again (flow id = ${params.state})"
         )
         return
     }

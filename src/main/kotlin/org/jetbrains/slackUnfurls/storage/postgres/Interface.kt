@@ -3,6 +3,10 @@ package org.jetbrains.slackUnfurls.storage.postgres
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.server.config.*
 import io.ktor.http.*
+import io.ktor.server.application.*
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.time.delay
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.statements.api.ExposedBlob
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -11,6 +15,7 @@ import org.jetbrains.slackUnfurls.encrypt
 import org.jetbrains.slackUnfurls.routing.Routes
 import org.jetbrains.slackUnfurls.storage.*
 import space.jetbrains.api.runtime.SpaceAppInstance
+import java.time.Duration
 import java.time.LocalDateTime
 
 class PostgresStorage(private val db: Database) : Storage {
@@ -301,16 +306,16 @@ class PostgresStorage(private val db: Database) : Storage {
                         it[this.slackTeamId] = params.slackTeamId
                         it[this.backUrl] = params.backUrl
                         it[this.permissionScopes] = permissionScopes
+                        it[this.created] = LocalDateTime.now()
                     }
                 }
             }
         }
 
-        override suspend fun getOnce(id: String): SlackOAuthSession? {
+        override suspend fun get(id: String): SlackOAuthSession? {
             return tx {
                 SlackOAuthSessions.select { SlackOAuthSessions.id eq id }.firstOrNull()
                     ?.let { session ->
-                        SlackOAuthSessions.deleteWhere { SlackOAuthSessions.id eq id }
                         SlackOAuthSession(
                             spaceOrgId = session[SlackOAuthSessions.spaceOrgId],
                             spaceUserId = session[SlackOAuthSessions.spaceUserId],
@@ -319,6 +324,18 @@ class PostgresStorage(private val db: Database) : Storage {
                             permissionScopes = session[SlackOAuthSessions.permissionScopes]
                         )
                     }
+            }
+        }
+
+        override fun Application.launchCleanup() = launch {
+            while (isActive) {
+                val deleted = tx {
+                    SlackOAuthSessions.deleteWhere {
+                        SlackOAuthSessions.created less LocalDateTime.now().minus(oauthSessionsCleanupTimeout)
+                    }
+                }
+                log.info("Slack OAuth sessions cleanup - deleted $deleted items")
+                delay(oauthSessionsCleanupTimeout)
             }
         }
     }
@@ -415,16 +432,16 @@ class PostgresStorage(private val db: Database) : Storage {
                         it[slackUserId] = params.slackUserId
                         it[spaceOrgId] = params.spaceOrgId
                         it[this.permissionScopes] = permissionScopes
+                        it[this.created] = LocalDateTime.now()
                     }
                 }
             }
         }
 
-        override suspend fun getOnce(id: String): SpaceOAuthSession? {
+        override suspend fun get(id: String): SpaceOAuthSession? {
             return tx {
                 SpaceOAuthSessions.select { SpaceOAuthSessions.id eq id }.firstOrNull()
                     ?.let { session ->
-                        SpaceOAuthSessions.deleteWhere { SpaceOAuthSessions.id eq id }
                         SpaceOAuthSession(
                             slackTeamId = session[SpaceOAuthSessions.slackTeamId],
                             slackUserId = session[SpaceOAuthSessions.slackUserId],
@@ -433,6 +450,18 @@ class PostgresStorage(private val db: Database) : Storage {
                             permissionScopes = session[SpaceOAuthSessions.permissionScopes]
                         )
                     }
+            }
+        }
+
+        override fun Application.launchCleanup() = launch {
+            while (isActive) {
+                val deleted = tx {
+                    SpaceOAuthSessions.deleteWhere {
+                        SpaceOAuthSessions.created less LocalDateTime.now().minus(oauthSessionsCleanupTimeout)
+                    }
+                }
+                log.info("Slack OAuth sessions cleanup - deleted $deleted items")
+                delay(oauthSessionsCleanupTimeout)
             }
         }
     }
@@ -471,6 +500,8 @@ class PostgresStorage(private val db: Database) : Storage {
     private fun <T> tx(statement: Transaction.() -> T): T =
         transaction(db, statement)
 }
+
+private val oauthSessionsCleanupTimeout = Duration.ofHours(1)
 
 fun initPostgres() : PostgresStorage? {
     val postgresUrl = config.tryGetString("storage.postgres.url")?.let { Url(it) } ?: return null
