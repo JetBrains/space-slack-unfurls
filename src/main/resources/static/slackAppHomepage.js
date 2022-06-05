@@ -35,7 +35,7 @@ function getCssVarsAndSubscribeForChanges() {
     });
 }
 
-function getSpaceUserAccessToken() {
+function getUserAccessTokenData() {
     return new Promise((resolve) => {
         const channel = new MessageChannel();
         channel.port1.onmessage = e => resolve(e.data);
@@ -52,10 +52,10 @@ function confirmDialog(options) {
 }
 
 async function onAddSlackTeamBtnClick() {
-    let spaceUserAccessToken = await getSpaceUserAccessToken();
+    let {token, serverUrl} = await getUserAccessTokenData();
     let response = await fetch(
-        `/add-slack-team?backUrl=${encodeURIComponent(document.referrer)}`,
-        { method: "POST", headers: { "Authorization": "Bearer " + spaceUserAccessToken } }
+        `/add-slack-team?backUrl=${serverUrl}`,
+        { method: "POST", headers: { "Authorization": "Bearer " + token } }
     );
     window.top.location = await response.text();
 }
@@ -69,8 +69,8 @@ function showTeamsListEmptyState() {
 }
 
 async function refreshSlackWorkspacesList() {
-    let spaceUserAccessToken = await getSpaceUserAccessToken();
-    let response = await fetch("/slack-teams", {headers: {"Authorization": "Bearer " + spaceUserAccessToken}});
+    let {token} = await getUserAccessTokenData();
+    let response = await fetch("/slack-teams", {headers: {"Authorization": "Bearer " + token}});
     let {teams, canManage} = await response.json();
     slackTeamsList.innerHTML = "";
 
@@ -117,7 +117,7 @@ async function onRemoveSlackTeamBtnClick(teamId, teamDomain, removeBtn, listItem
         removeBtn.parentElement.appendChild(spinner);
         removeBtn.parentElement.removeChild(removeBtn);
 
-        let spaceUserAccessToken = await getSpaceUserAccessToken();
+        let spaceUserAccessToken = await getUserAccessTokenData();
         let response = await fetch(
             `/remove-slack-team?slackTeamId=${teamId}`,
             {method: "POST", headers: {"Authorization": "Bearer " + spaceUserAccessToken}}
