@@ -22,7 +22,6 @@ object ChatUnfurlProvider : SpaceUnfurlProvider {
     override val spacePermissionScopes = listOf(
         "global:Channel.ViewMessages",
         "global:Channel.ViewChannel",
-        "global:Profile.DirectMessages.ReadMessages",
         "global:Article.View",
         "global:Article.Comments.View"
     )

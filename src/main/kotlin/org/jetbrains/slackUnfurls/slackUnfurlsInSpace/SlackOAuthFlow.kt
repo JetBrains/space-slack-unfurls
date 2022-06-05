@@ -147,10 +147,8 @@ fun requestOAuthToken(code: String): OAuthV2AccessResponse? {
 private val slackPermissionScopes = listOf(
     "channels:history",
     "groups:history",
-    "im:history",
     "channels:read",
     "groups:read",
-    "im:read",
     "team:read",
     "users:read",
     "usergroups:read",
