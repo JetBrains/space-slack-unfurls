@@ -309,7 +309,7 @@ private suspend fun provideUnfurlsContent(
 }
 
 private suspend fun StringBuilder.buildMessageText(message: Message, slackClient: SlackUserClientImpl, slackDomain: String) {
-    message.blocks.filterIsInstance<RichTextBlock>().takeUnless { it.isEmpty() }
+    message.blocks?.filterIsInstance<RichTextBlock>().takeUnless { it.isNullOrEmpty() }
         ?.flatMap { it.elements }
         ?.filterIsInstance<RichTextElement>()
         ?.forEach { appendRichTextElement(it, slackClient, slackDomain) }
