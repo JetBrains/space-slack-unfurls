@@ -1,9 +1,8 @@
 package org.jetbrains.slackUnfurls.storage.postgres
 
-import com.zaxxer.hikari.HikariDataSource
-import io.ktor.server.config.*
 import io.ktor.http.*
 import io.ktor.server.application.*
+import io.ktor.server.config.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.time.delay
@@ -76,7 +75,13 @@ class PostgresStorage(private val db: Database) : Storage {
             }
         }
 
-        override suspend fun create(teamId: String, domain: String, spaceOrgId: String, accessToken: ByteArray, refreshToken: ByteArray) {
+        override suspend fun create(
+            teamId: String,
+            domain: String,
+            spaceOrgId: String,
+            accessToken: ByteArray,
+            refreshToken: ByteArray
+        ) {
             tx {
                 val teamExists = SlackTeams.select { SlackTeams.id eq teamId }.forUpdate().any()
                 if (teamExists) {
@@ -350,7 +355,7 @@ class PostgresStorage(private val db: Database) : Storage {
             permissionScopes: String?
         ) {
             tx {
-                with (SpaceOAuthUserTokens) {
+                with(SpaceOAuthUserTokens) {
                     deleteWhere {
                         by(slackTeamId = slackTeamId, slackUserId = slackUserId, spaceOrgId = spaceOrgId)
                     }
@@ -371,7 +376,7 @@ class PostgresStorage(private val db: Database) : Storage {
             return tx {
                 SpaceOAuthUserTokens
                     .select {
-                        with (SpaceOAuthUserTokens) { by(key.slackTeamId, key.slackUserId, key.spaceOrgId) }
+                        with(SpaceOAuthUserTokens) { by(key.slackTeamId, key.slackUserId, key.spaceOrgId) }
                     }
                     .firstOrNull()
                     ?.let {
@@ -392,7 +397,7 @@ class PostgresStorage(private val db: Database) : Storage {
 
         override suspend fun delete(slackTeamId: String, slackUserId: String, spaceOrgId: String) {
             tx {
-                with (SpaceOAuthUserTokens) {
+                with(SpaceOAuthUserTokens) {
                     deleteWhere {
                         by(slackTeamId = slackTeamId, slackUserId = slackUserId, spaceOrgId = spaceOrgId)
                     }
@@ -478,7 +483,12 @@ class PostgresStorage(private val db: Database) : Storage {
             }
         }
 
-        override suspend fun getOnce(slackTeamId: String, slackUserId: String, spaceOrgId: String, limit: Int): List<String> {
+        override suspend fun getOnce(
+            slackTeamId: String,
+            slackUserId: String,
+            spaceOrgId: String,
+            limit: Int
+        ): List<String> {
             fun SqlExpressionBuilder.filter() = (DeferredSlackLinkUnfurlEvents.slackTeamId eq slackTeamId) and
                     (DeferredSlackLinkUnfurlEvents.slackUserId eq slackUserId) and
                     (DeferredSlackLinkUnfurlEvents.spaceOrgId eq spaceOrgId)
@@ -503,23 +513,20 @@ class PostgresStorage(private val db: Database) : Storage {
 
 private val oauthSessionsCleanupTimeout = Duration.ofHours(1)
 
-fun initPostgres() : PostgresStorage? {
+fun initPostgres(): PostgresStorage? {
     val postgresUrl = config.tryGetString("storage.postgres.url")?.let { Url(it) } ?: return null
 
-    val dataSource = object : HikariDataSource() {
-        init {
-            driverClassName = "org.postgresql.Driver"
-            jdbcUrl = URLBuilder(postgresUrl).apply {
-                protocol = URLProtocol("jdbc:postgresql", 5432)
-                user = null
-                password = null
-            }.buildString()
-            username = postgresUrl.user
-            password = postgresUrl.password
-        }
-    }
-
-    val connection = Database.connect(dataSource)
+    val connection = Database.connect(
+        url = URLBuilder(postgresUrl).apply {
+            protocol = URLProtocol("jdbc:postgresql", 5432)
+            port = postgresUrl.port
+            user = null
+            password = null
+        }.buildString(),
+        driver = "org.postgresql.Driver",
+        user = postgresUrl.user!!,
+        password = postgresUrl.password!!
+    )
 
     transaction(connection) {
         SchemaUtils.createMissingTablesAndColumns(*allTables.toTypedArray())
