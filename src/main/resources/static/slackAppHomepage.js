@@ -57,7 +57,13 @@ async function onAddSlackTeamBtnClick() {
         `/add-slack-team?backUrl=${serverUrl}`,
         { method: "POST", headers: { "Authorization": "Bearer " + token } }
     );
-    window.top.location = await response.text();
+    redirectTopWindow(await response.text());
+}
+
+function redirectTopWindow(redirectUrl) {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = e => resolve(e.data);
+    window.parent.postMessage({type:"RedirectWithConfirmationRequest", redirectUrl:redirectUrl}, "*", [channel.port2]);
 }
 
 function showTeamsListEmptyState() {
