@@ -70,8 +70,11 @@ object ChatUnfurlProvider : SpaceUnfurlProvider {
                 defaultName()
             }
         }
-        val channelUrl =
-            url.copy(encodedPath = "/im/${channel.contact.key}", parameters = Parameters.Empty, fragment = "")
+        val channelUrl = URLBuilder(url).apply {
+            encodedPath = "/im/${channel.contact.key}"
+            encodedParameters = ParametersBuilder()
+            fragment = ""
+        }.build()
         val channelName = (channel.contact.ext as? M2SharedChannelContent)?.name ?: channel.contact.defaultName
 
         val message = spaceClient.chats.messages.getMessage(

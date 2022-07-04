@@ -81,7 +81,11 @@ object IssueUnfurlProvider : SpaceUnfurlProvider {
                 }
                 context {
                     spaceLogo()
-                    val projectUrl = url.copy(encodedPath = "/p/$projectKey", parameters = Parameters.Empty, fragment = "")
+                    val projectUrl = URLBuilder(url).apply {
+                        encodedPath = "/p/$projectKey"
+                        encodedParameters = ParametersBuilder()
+                        fragment = ""
+                    }.build()
                     markdownText("JetBrains Space issue in <$projectUrl|$projectKey> project")
                 }
             }

@@ -13,12 +13,12 @@ import com.slack.api.methods.request.chat.ChatUnfurlRequest
 import com.slack.api.model.kotlin_extension.block.element.ButtonStyle
 import com.slack.api.model.kotlin_extension.block.withBlocks
 import com.slack.api.util.json.GsonFactory
-import io.ktor.application.*
+import io.ktor.server.application.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import io.ktor.locations.*
-import io.ktor.request.*
-import io.ktor.response.*
+import io.ktor.server.locations.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -228,7 +228,7 @@ private suspend fun processLinkSharedEvent(payload: LinkSharedPayload, locations
                 try {
                     item.provideUnfurlDetail()?.let { item.originalLink to it }
                 } catch (ex: RequestException) {
-                    val responseJson = ex.response.readText(Charsets.UTF_8).let(::parseJson)
+                    val responseJson = ex.response.bodyAsText().let(::parseJson)
                     val (errorCode, errorDescription) = responseJson?.let {
                         val error = it.get("error")?.takeIf { it.isTextual }?.asText()
                         val errorDescription = it.get("error_description")?.takeIf { it.isTextual }?.asText()

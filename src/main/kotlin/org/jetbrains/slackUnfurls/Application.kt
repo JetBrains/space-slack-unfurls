@@ -2,7 +2,7 @@ package org.jetbrains.slackUnfurls
 
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
-import io.ktor.application.*
+import io.ktor.server.application.*
 import org.jetbrains.slackUnfurls.routing.configureRouting
 import org.jetbrains.slackUnfurls.slackUnfurlsInSpace.launchSlackUnfurlsInSpace
 import org.jetbrains.slackUnfurls.spaceUnfurlsInSlack.launchSpaceUnfurlsInSlack

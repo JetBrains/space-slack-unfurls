@@ -1,7 +1,7 @@
 package org.jetbrains.slackUnfurls.storage.postgres
 
 import com.zaxxer.hikari.HikariDataSource
-import io.ktor.config.*
+import io.ktor.server.config.*
 import io.ktor.http.*
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.statements.api.ExposedBlob
@@ -120,29 +120,6 @@ class PostgresStorage(private val db: Database) : Storage {
                 SpaceOrganizations.update(
                     where = { SpaceOrganizations.clientId eq clientId },
                     body = { it[lastUnfurlQueueItemEtag] = lastEtag }
-                )
-            }
-        }
-
-        override suspend fun updateServerUrl(clientId: String, newServerUrl: String) {
-            tx {
-                SpaceOrganizations.update(
-                    where = { SpaceOrganizations.clientId eq clientId },
-                    body = {
-                        it[orgUrl] = newServerUrl
-                        it[domain] = Url(newServerUrl).host
-                    }
-                )
-            }
-        }
-
-        override suspend fun updateClientSecret(clientId: String, newClientSecret: String) {
-            tx {
-                SpaceOrganizations.update(
-                    where = { SpaceOrganizations.clientId eq clientId },
-                    body = {
-                        it[clientSecret] = ExposedBlob(encrypt(newClientSecret))
-                    }
                 )
             }
         }
@@ -449,9 +426,11 @@ fun initPostgres() : PostgresStorage? {
     val dataSource = object : HikariDataSource() {
         init {
             driverClassName = "org.postgresql.Driver"
-            jdbcUrl = postgresUrl
-                .copy(protocol = URLProtocol("jdbc:postgresql", postgresUrl.port), user = null, password = null)
-                .toString()
+            jdbcUrl = URLBuilder(postgresUrl).apply {
+                protocol = URLProtocol("jdbc:postgresql", 5432)
+                user = null
+                password = null
+            }.buildString()
             username = postgresUrl.user
             password = postgresUrl.password
         }

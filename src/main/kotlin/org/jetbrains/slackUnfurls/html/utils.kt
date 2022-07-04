@@ -1,7 +1,7 @@
 package org.jetbrains.slackUnfurls.html
 
-import io.ktor.application.*
-import io.ktor.html.*
+import io.ktor.server.application.*
+import io.ktor.server.html.*
 import io.ktor.http.*
 import kotlinx.html.*
 import org.slf4j.Logger

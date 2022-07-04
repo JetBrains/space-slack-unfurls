@@ -1,6 +1,6 @@
 package org.jetbrains.slackUnfurls.routing
 
-import io.ktor.locations.*
+import io.ktor.server.locations.*
 
 object Routes {
 

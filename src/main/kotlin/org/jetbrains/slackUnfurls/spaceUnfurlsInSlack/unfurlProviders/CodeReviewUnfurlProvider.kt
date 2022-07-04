@@ -106,7 +106,11 @@ object CodeReviewUnfurlProvider : SpaceUnfurlProvider {
                         }
                         context {
                             spaceLogo()
-                            val projectUrl = url.copy(encodedPath = "/p/${review.project.key}", parameters = Parameters.Empty, fragment = "")
+                            val projectUrl = URLBuilder(url).apply {
+                                encodedPath = "/p/${review.project.key}"
+                                encodedParameters = ParametersBuilder()
+                                fragment = ""
+                            }.build()
                             markdownText("JetBrains Space code review in <$projectUrl|${review.project.key}> project")
                         }
                     }
@@ -124,7 +128,11 @@ object CodeReviewUnfurlProvider : SpaceUnfurlProvider {
                         }
                         context {
                             spaceLogo()
-                            val projectUrl = url.copy(encodedPath = "/p/${review.project.key}", parameters = Parameters.Empty, fragment = "")
+                            val projectUrl = URLBuilder(url).apply {
+                                encodedPath = "/p/${review.project.key}"
+                                encodedParameters = ParametersBuilder()
+                                fragment = ""
+                            }.build()
                             markdownText("JetBrains Space merge request in <$projectUrl|${review.project.key}> project")
                         }
                     }

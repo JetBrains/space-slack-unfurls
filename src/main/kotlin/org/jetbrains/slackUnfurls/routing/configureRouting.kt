@@ -1,13 +1,13 @@
 package org.jetbrains.slackUnfurls.routing
 
-import io.ktor.application.*
-import io.ktor.html.*
+import io.ktor.server.application.*
+import io.ktor.server.html.*
 import io.ktor.http.*
-import io.ktor.http.content.*
-import io.ktor.locations.*
-import io.ktor.locations.post
-import io.ktor.response.*
-import io.ktor.routing.*
+import io.ktor.server.http.content.*
+import io.ktor.server.locations.*
+import io.ktor.server.locations.post
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
 import org.jetbrains.slackUnfurls.SlackCredentials
 import org.jetbrains.slackUnfurls.entrypointUrl
 import org.jetbrains.slackUnfurls.html.installPage

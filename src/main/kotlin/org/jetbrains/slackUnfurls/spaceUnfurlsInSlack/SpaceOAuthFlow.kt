@@ -1,13 +1,14 @@
 package org.jetbrains.slackUnfurls.spaceUnfurlsInSlack
 
-import io.ktor.application.*
+import io.ktor.server.application.*
 import io.ktor.client.*
-import io.ktor.client.features.*
-import io.ktor.client.features.json.*
-import io.ktor.client.features.json.serializer.*
+import io.ktor.client.plugins.*
+import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.http.*
-import io.ktor.response.*
+import io.ktor.serialization.kotlinx.json.*
+import io.ktor.server.response.*
 import io.ktor.util.*
+import kotlinx.serialization.json.Json
 import org.jetbrains.slackUnfurls.*
 import org.jetbrains.slackUnfurls.html.respondError
 import org.jetbrains.slackUnfurls.html.respondSuccess
@@ -125,8 +126,8 @@ suspend fun onUserAuthFlowCompletedInSpace(call: ApplicationCall, params: Routes
 private val spaceOAuthHttpClient by lazy {
     HttpClient {
         install(HttpTimeout)
-        Json {
-            serializer = KotlinxSerializer(kotlinx.serialization.json.Json {
+        install(ContentNegotiation) {
+            json(Json {
                 ignoreUnknownKeys = true
             })
         }

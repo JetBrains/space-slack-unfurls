@@ -35,8 +35,6 @@ interface Storage {
         suspend fun getById(clientId: String): SpaceOrg?
         suspend fun getByDomain(domain: String): SpaceOrg?
         suspend fun updateLastUnfurlQueueItemEtag(clientId: String, lastEtag: Long?)
-        suspend fun updateServerUrl(clientId: String, newServerUrl: String)
-        suspend fun updateClientSecret(clientId: String, newClientSecret: String)
     }
 
     interface SlackUserTokens {

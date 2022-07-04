@@ -1,9 +1,9 @@
 package org.jetbrains.slackUnfurls.slackUnfurlsInSpace
 
 import com.slack.api.methods.response.oauth.OAuthV2AccessResponse
-import io.ktor.application.*
+import io.ktor.server.application.*
 import io.ktor.http.*
-import io.ktor.response.*
+import io.ktor.server.response.*
 import io.ktor.util.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.slf4j.MDCContext

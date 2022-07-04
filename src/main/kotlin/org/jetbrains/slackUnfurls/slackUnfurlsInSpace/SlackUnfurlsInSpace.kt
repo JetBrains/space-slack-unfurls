@@ -4,13 +4,14 @@ import com.slack.api.model.Message
 import com.slack.api.model.block.RichTextBlock
 import com.slack.api.model.block.element.*
 import com.slack.api.model.block.element.RichTextSectionElement.TextStyle
-import io.ktor.application.*
+import io.ktor.server.application.*
+import io.ktor.client.call.body
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.http.content.*
-import io.ktor.locations.*
-import io.ktor.request.*
-import io.ktor.response.*
+import io.ktor.server.locations.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -148,11 +149,16 @@ suspend fun ProcessingScope.onAppInstalledToSpaceOrg(spaceClient: SpaceClient) {
     val imageBytes = inputStream.use { it.readBytes() }
     val uploadPath = spaceClient.uploads.createUpload("file")
     val token = spaceClient.auth.token(spaceClient.ktorClient, spaceClient.appInstance)
-    val appLogoAttachmentId = spaceClient.ktorClient.put<String>("${spaceClient.server.serverUrl}$uploadPath/slack.jpeg") {
-        body = ByteArrayContent(imageBytes)
-        header(HttpHeaders.Authorization, "Bearer $token")
-    }
-    spaceClient.applications.updateApplication(ApplicationIdentifier.Me, pictureAttachmentId = Option.Value(appLogoAttachmentId))
+    val appLogoAttachmentId = spaceClient.ktorClient
+        .put("${spaceClient.server.serverUrl}$uploadPath/slack.jpeg") {
+            setBody(ByteArrayContent(imageBytes))
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        .body<String>()
+    spaceClient.applications.updateApplication(
+        ApplicationIdentifier.Me,
+        pictureAttachmentId = Option.Value(appLogoAttachmentId)
+    )
 }
 
 suspend fun scheduleProcessing(clientId: String) {
