@@ -146,23 +146,6 @@ suspend fun ProcessingScope.onAppInstalledToSpaceOrg(spaceClient: SpaceClient) {
         GlobalPermissionContextIdentifier,
         listOf(ApplicationHomepageUiExtensionIn)
     )
-
-    val resourcePath = "static/slack.jpeg"
-    val inputStream =
-        this::class.java.classLoader.getResourceAsStream(resourcePath) ?: error("Could not read resource $resourcePath")
-    val imageBytes = inputStream.use { it.readBytes() }
-    val uploadPath = spaceClient.uploads.createUpload("file")
-    val token = spaceClient.auth.token(spaceClient.ktorClient, spaceClient.appInstance)
-    val appLogoAttachmentId = spaceClient.ktorClient
-        .put("${spaceClient.server.serverUrl}$uploadPath/slack.jpeg") {
-            setBody(ByteArrayContent(imageBytes))
-            header(HttpHeaders.Authorization, "Bearer $token")
-        }
-        .body<String>()
-    spaceClient.applications.updateApplication(
-        ApplicationIdentifier.Me,
-        pictureAttachmentId = Option.Value(appLogoAttachmentId)
-    )
 }
 
 suspend fun scheduleProcessing(clientId: String) {
