@@ -17,12 +17,16 @@ abstract class BaseSlackClient(
     private var tokens: Tokens? = Tokens(accessToken, refreshToken, permissionScopes)
 
     protected suspend fun <T : SlackApiTextResponse> fetch(action: String, handler: suspend (String) -> T?) : T? {
-        return tokens?.let {
+        return tokens
+            .also { if (it == null) log.warn("Ignoring $action because no Slack tokens are present") }
+            ?.let {
             try {
+                log.info("First attempt for $action")
                 handler(it.accessToken).let { response: T? ->
                     if (response != null && !response.isOk) {
                         handleSlackError(action, response.error, handler)
                     } else {
+                        log.info("Success for $action")
                         response
                     }
                 }
@@ -34,15 +38,18 @@ abstract class BaseSlackClient(
     }
 
     private suspend fun <T : SlackApiTextResponse> handleSlackError(action: String, error: String, handler: (suspend (String) -> T?)?) : T? {
+        log.warn("Got ok=false from Slack on $action - $error")
         if ((error == "token_expired" || error == "cannot_auth_user" || error == "invalid_auth") && handler != null) {
             tryRefreshToken()
             // break recursion on the second call to `handleSlackError` by omitting handler parameter
             return tokens?.let {
                 try {
+                    log.info("Second attempt for $action")
                     handler(it.accessToken).let { response: T? ->
                         if (response != null && !response.isOk) {
                             handleSlackError(action, response.error, handler = null)
                         } else {
+                            log.info("Success for $action")
                             response
                         }
                     }
@@ -53,10 +60,8 @@ abstract class BaseSlackClient(
             }
         }
 
-        val shouldResetToken = slackErrorsToResetToken.contains(error)
-        val slackUserTokenResetMessage = if (shouldResetToken) "Slack user refresh token is reset." else ""
-        log.warn("Got ok=false from Slack on $action - $error. $slackUserTokenResetMessage")
-        if (shouldResetToken) {
+        if (slackErrorsToResetToken.contains(error)) {
+            log.warn("Slack refresh token is reset")
             resetToken()
         }
         return null
