@@ -5,10 +5,7 @@ import com.slack.api.model.block.RichTextBlock
 import com.slack.api.model.block.element.*
 import com.slack.api.model.block.element.RichTextSectionElement.TextStyle
 import io.ktor.server.application.*
-import io.ktor.client.call.body
-import io.ktor.client.request.*
 import io.ktor.http.*
-import io.ktor.http.content.*
 import io.ktor.server.locations.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -30,7 +27,6 @@ import space.jetbrains.api.runtime.*
 import space.jetbrains.api.runtime.helpers.*
 import space.jetbrains.api.runtime.resources.applications
 import space.jetbrains.api.runtime.resources.teamDirectory
-import space.jetbrains.api.runtime.resources.uploads
 import space.jetbrains.api.runtime.types.*
 import java.net.URI
 import java.time.format.DateTimeFormatter
@@ -132,15 +128,17 @@ suspend fun onSpaceCall(call: ApplicationCall) {
     )
 }
 
-suspend fun ProcessingScope.onAppInstalledToSpaceOrg(spaceClient: SpaceClient) {
-    val provideUnfurlsRightCode = "Unfurl.App.ProvideAttachment"
+const val ProvideUnfurlsRightCode = "Unfurl.App.ProvideAttachment"
+const val SlackDomain = "slack.com"
+
+suspend fun onAppInstalledToSpaceOrg(spaceClient: SpaceClient) {
     spaceClient.applications.authorizations.authorizedRights.requestRights(
         ApplicationIdentifier.Me,
         GlobalPermissionContextIdentifier,
-        listOf(provideUnfurlsRightCode)
+        listOf(ProvideUnfurlsRightCode)
     )
 
-    spaceClient.applications.unfurls.domains.updateUnfurledDomains(listOf("slack.com"))
+    spaceClient.applications.unfurls.domains.updateUnfurledDomains(listOf(SlackDomain))
 
     spaceClient.applications.setUiExtensions(
         GlobalPermissionContextIdentifier,

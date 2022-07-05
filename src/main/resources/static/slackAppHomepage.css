@@ -11,6 +11,15 @@ body {
     line-height: 30px;
 }
 
+#grant-permissions-block {
+    background-color: var(--warning-background-color);
+    border-color: var(--warning-accent-color);
+    color: var(--warning-accent-color);
+    padding: 8px;
+    border-width: 1px;
+    border-style: solid;
+}
+
 #slack-teams-block {
     padding-top: 8px;
 }

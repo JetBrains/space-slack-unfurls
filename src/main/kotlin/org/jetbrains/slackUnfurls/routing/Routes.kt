@@ -74,7 +74,12 @@ object Routes {
 }
 
 @Serializable
-data class SlackTeamsResponse(val teams: List<SlackTeamOut>, val canManage: Boolean)
+data class SlackTeamsResponse(
+    val teams: List<SlackTeamOut>,
+    val canManage: Boolean,
+    val permissionsApproved: Boolean,
+    val unfurlDomainApproved: Boolean
+)
 
 @Serializable
 data class SlackTeamOut(val id: String, val domain: String)

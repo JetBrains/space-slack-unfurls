@@ -1,3 +1,4 @@
+let grantPermissionsBlock = document.getElementById("grant-permissions-block");
 let addSlackTeamBtn = document.getElementById("add-slack-team-btn");
 let slackTeamsBlock = document.getElementById("slack-teams-block");
 let slackTeamsList = document.getElementById("slack-teams-list");
@@ -77,8 +78,14 @@ function showTeamsListEmptyState() {
 async function refreshSlackWorkspacesList() {
     let {token} = await getUserAccessTokenData();
     let response = await fetch("/slack-teams", {headers: {"Authorization": "Bearer " + token}});
-    let {teams, canManage} = await response.json();
+    let {teams, canManage, permissionsApproved, unfurlDomainApproved} = await response.json();
     slackTeamsList.innerHTML = "";
+
+    if (permissionsApproved && unfurlDomainApproved) {
+        grantPermissionsBlock.classList.add("hidden")
+    } else {
+        grantPermissionsBlock.classList.remove("hidden")
+    }
 
     if (teams.length > 0) {
         for (let team of teams) {
