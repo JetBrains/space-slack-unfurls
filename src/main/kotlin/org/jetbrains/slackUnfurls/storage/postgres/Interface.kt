@@ -61,6 +61,18 @@ class PostgresStorage(private val db: Database) : Storage {
             }
         }
 
+        override suspend fun updateIconUrlAndName(teamId: String, iconUrl: String, name: String) {
+            tx {
+                SlackTeams.update(
+                    where = { SlackTeams.id eq teamId },
+                    body = {
+                        it[this.iconUrl] = iconUrl
+                        it[this.name] = name
+                    }
+                )
+            }
+        }
+
         override suspend fun updateTokens(teamId: String, accessToken: ByteArray, refreshToken: ByteArray?) {
             tx {
                 SlackTeams.update(
@@ -80,7 +92,9 @@ class PostgresStorage(private val db: Database) : Storage {
             domain: String,
             spaceOrgId: String,
             accessToken: ByteArray,
-            refreshToken: ByteArray
+            refreshToken: ByteArray,
+            iconUrl: String?,
+            name: String,
         ) {
             tx {
                 val teamExists = SlackTeams.select { SlackTeams.id eq teamId }.forUpdate().any()
@@ -99,6 +113,8 @@ class PostgresStorage(private val db: Database) : Storage {
                         it[this.created] = LocalDateTime.now()
                         it[this.accessToken] = ExposedBlob(accessToken)
                         it[this.refreshToken] = ExposedBlob(refreshToken)
+                        it[this.iconUrl] = iconUrl
+                        it[this.name] = name
                     }
                 }
 
@@ -131,7 +147,9 @@ class PostgresStorage(private val db: Database) : Storage {
                 id = this[SlackTeams.id].value,
                 domain = this[SlackTeams.domain],
                 appAccessToken = this[SlackTeams.accessToken].bytes,
-                appRefreshToken = this[SlackTeams.refreshToken].bytes
+                appRefreshToken = this[SlackTeams.refreshToken].bytes,
+                iconUrl = this[SlackTeams.iconUrl],
+                name = this[SlackTeams.name],
             )
     }
 

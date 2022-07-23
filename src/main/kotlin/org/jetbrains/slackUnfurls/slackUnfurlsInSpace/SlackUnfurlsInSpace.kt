@@ -4,8 +4,8 @@ import com.slack.api.model.Message
 import com.slack.api.model.block.RichTextBlock
 import com.slack.api.model.block.element.*
 import com.slack.api.model.block.element.RichTextSectionElement.TextStyle
-import io.ktor.server.application.*
 import io.ktor.http.*
+import io.ktor.server.application.*
 import io.ktor.server.locations.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -24,7 +24,10 @@ import org.jetbrains.slackUnfurls.storage.SpaceOrg
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import space.jetbrains.api.runtime.*
-import space.jetbrains.api.runtime.helpers.*
+import space.jetbrains.api.runtime.helpers.RequestAdapter
+import space.jetbrains.api.runtime.helpers.SpaceHttpResponse
+import space.jetbrains.api.runtime.helpers.processPayload
+import space.jetbrains.api.runtime.helpers.unfurl
 import space.jetbrains.api.runtime.resources.applications
 import space.jetbrains.api.runtime.resources.teamDirectory
 import space.jetbrains.api.runtime.types.*
@@ -70,7 +73,7 @@ fun Application.launchSlackUnfurlsInSpace() {
 
 suspend fun onSpaceCall(call: ApplicationCall) {
 
-    val requestAdapter =  object : RequestAdapter {
+    val requestAdapter = object : RequestAdapter {
         override suspend fun receiveText() =
             call.receiveText()
 
@@ -142,7 +145,7 @@ suspend fun onAppInstalledToSpaceOrg(spaceClient: SpaceClient) {
 
     spaceClient.applications.setUiExtensions(
         GlobalPermissionContextIdentifier,
-        listOf(ApplicationHomepageUiExtensionIn)
+        listOf(ApplicationHomepageUiExtensionIn("/space-iframe"))
     )
 }
 
@@ -165,15 +168,22 @@ private suspend fun processUnfurlQueue(spaceClientId: String, locations: Locatio
         log.info("Fetched ${queueItems.size} unfurl queue items")
         while (queueItems.isNotEmpty()) {
             queueItems
-                .filterWithLogging(log, message = "unfurl queue items because they do not have Space author id") { item ->
+                .filterWithLogging(
+                    log,
+                    message = "unfurl queue items because they do not have Space author id"
+                ) { item ->
                     item.authorUserId != null
                 }
                 .map { Url(it.target) to it }
                 .filterWithLogging(log, message = "unfurl queue items because these aren't message links") { (url, _) ->
                     url.fullPath.startsWith("/archives")
                 }
-                .mapNotNullWithLogging(log, message = "unfurl queue items because Slack workspace is not connected to Space org") { (url, item) ->
-                    db.slackTeams.getByDomain(url.host.removeSuffix(".slack.com"), spaceOrg.clientId)?.let { it to item }
+                .mapNotNullWithLogging(
+                    log,
+                    message = "unfurl queue items because Slack workspace is not connected to Space org"
+                ) { (url, item) ->
+                    db.slackTeams.getByDomain(url.host.removeSuffix(".slack.com"), spaceOrg.clientId)
+                        ?.let { it to item }
                 }
                 .groupBy({ it.first to it.second.authorUserId }, { it.second })
                 .forEach { (key, itemsForSlackTeamAndUser) ->
@@ -230,12 +240,12 @@ private suspend fun provideUnfurlsContent(
     )
 
     val validItems = queueItems.mapNotNull { item ->
-        URI(item.target).let {
-            val parts = it.path.split('/').dropWhile { it != "archives" }.drop(1)
+        URI(item.target).let { uri ->
+            val parts = uri.path.split('/').dropWhile { it != "archives" }.drop(1)
             val channelId = parts.firstOrNull()
             val messageId = parts.drop(1).firstOrNull()
             if (channelId != null && messageId != null) {
-                val threadTs = it.parseQueryParams()
+                val threadTs = uri.parseQueryParams()
                     .firstNotNullOfOrNull { (key, value) -> value.takeIf { key == "thread_ts" } }
                 Item(item, channelId, messageId, threadTs)
             } else
@@ -255,8 +265,9 @@ private suspend fun provideUnfurlsContent(
                 if (threadTs != null)
                     "https://$slackDomain.slack.com/archives/$channelId/${tsToMessageId(threadTs)}"
                 else
-                    slackClient.fetchChannelName(channelId)?.channelLink(slackClient, slackDomain, channelId) ?: channelId
-            val userName = slackClient.fetchUserName(message.user)?.userName() ?: message.user
+                    slackClient.fetchChannelName(channelId)?.channelLink(slackClient, slackDomain, channelId)
+                        ?: channelId
+            val userName = messageUsername(message, slackClient)
             // TODO - use timestamp MC inline element
             val messageTs = messageId.removePrefix("p").dropLast(6).toLongOrNull()?.let {
                 Instant.fromEpochSeconds(it)
@@ -267,7 +278,7 @@ private suspend fun provideUnfurlsContent(
             val decoratedMessageText = buildString { buildMessageText(message, slackClient, slackDomain) }
             val content = unfurl {
                 outline(
-                    MessageOutlineLegacy(
+                    MessageOutline(
                         ApiIcon("slack"),
                         "*$userName* in $channelLink ($messageTs)"
                     )
@@ -289,7 +300,33 @@ private suspend fun provideUnfurlsContent(
     }
 }
 
-private suspend fun StringBuilder.buildMessageText(message: Message, slackClient: SlackUserClientImpl, slackDomain: String) {
+private suspend fun messageUsername(message: Message, slackClient: SlackUserClientImpl): String {
+    if (!message.username.isNullOrEmpty()) {
+        return message.username
+    }
+
+    val usernameByUserId = message.user?.let { userId ->
+        slackClient.fetchUserName(userId)?.userName()
+    }
+    if (usernameByUserId != null) {
+        return usernameByUserId
+    }
+
+    val usernameByBotId = message.botId?.let { botId ->
+        slackClient.fetchBotName(botId)?.bot?.name
+    }
+    if (usernameByBotId != null) {
+        return usernameByBotId
+    }
+
+    return message.user ?: message.botId ?: "<unknown user>"
+}
+
+private suspend fun StringBuilder.buildMessageText(
+    message: Message,
+    slackClient: SlackUserClientImpl,
+    slackDomain: String
+) {
     message.blocks?.filterIsInstance<RichTextBlock>().takeUnless { it.isNullOrEmpty() }
         ?.flatMap { it.elements }
         ?.filterIsInstance<RichTextElement>()
@@ -299,7 +336,11 @@ private suspend fun StringBuilder.buildMessageText(message: Message, slackClient
         }
 }
 
-private suspend fun StringBuilder.appendRichTextElement(element: RichTextElement, slackClient: SlackUserClientImpl, slackDomain: String) {
+private suspend fun StringBuilder.appendRichTextElement(
+    element: RichTextElement,
+    slackClient: SlackUserClientImpl,
+    slackDomain: String
+) {
     when (element) {
         is RichTextSectionElement -> {
             element.elements.forEach { appendRichTextElement(it, slackClient, slackDomain) }
@@ -426,7 +467,7 @@ suspend fun requestAuth(
                 section {
                     text("Authenticate in Slack to get link previews in Space")
                     controls {
-                        val slackOAuthUrl = "$entrypointUrl/${
+                        val slackOAuthUrl = "$entrypointUrl${
                             locations.href(
                                 Routes.SlackOAuth(
                                     spaceOrgId = context.spaceOrgId,

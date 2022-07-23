@@ -139,7 +139,7 @@ suspend fun onAppInstalledToSlackTeam(call: ApplicationCall, spaceOrgId: String,
         }
         val spaceApp = getSpaceClient(spaceOrg).applications.getApplication(ApplicationIdentifier.Me)
 
-        db.slackTeams.create(teamId, teamResponse.team.domain, spaceOrgId, encrypt(accessToken), encrypt(refreshToken))
+        db.slackTeams.create(teamId, teamResponse.team.domain, spaceOrgId, encrypt(accessToken), encrypt(refreshToken), teamResponse.team.icon?.image44, teamResponse.team.name)
 
         log.info("Slack team connected to Space org")
         val backUrl = URLBuilder(spaceOrg.url).run {

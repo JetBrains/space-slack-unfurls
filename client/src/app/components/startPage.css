@@ -1,0 +1,12 @@
+.startPage {
+    align-self: center;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.sub-header {
+    margin-bottom: 16px;
+    color: var(--secondary-text-color);
+}

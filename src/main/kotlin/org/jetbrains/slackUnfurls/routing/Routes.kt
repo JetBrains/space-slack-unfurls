@@ -4,18 +4,13 @@ import io.ktor.server.locations.*
 import kotlinx.serialization.Serializable
 
 object Routes {
+    @Location("/api/homepage-data")
+    object GetHomepageData
 
-    /** Space-facing application endpoint for providing homepage html that will be displayed within iframe in Space */
-    @Location("/space/api/iframe/app-homepage")
-    data class SpaceAppHomepage(val backgroundColor: String)
+    @Location("/api/url-for-adding-slack-team")
+    object UrlForAddingSlackTeam
 
-    @Location("/slack-teams")
-    object GetSlackTeams
-
-    @Location("/add-slack-team")
-    object AddSlackTeam
-
-    @Location("/remove-slack-team")
+    @Location("/api/remove-slack-team")
     data class RemoveSlackTeam(val slackTeamId: String)
 
     /** Space-facing application endpoint for all types of payload */
@@ -74,12 +69,13 @@ object Routes {
 }
 
 @Serializable
-data class SlackTeamsResponse(
+data class HomepageDataResponse(
     val teams: List<SlackTeamOut>,
     val canManage: Boolean,
-    val permissionsApproved: Boolean,
-    val unfurlDomainApproved: Boolean
+    val unapprovedPermissions: String?,
+    val unapprovedUnfurlDomains: String?,
+    val hasPermissionToApprove: Boolean,
 )
 
 @Serializable
-data class SlackTeamOut(val id: String, val domain: String)
+data class SlackTeamOut(val id: String, val domain: String, val iconUrl: String?, val name: String)

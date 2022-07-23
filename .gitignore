@@ -2,3 +2,7 @@
 /.idea/
 **/build/
 local.properties
+**/.DS_Store
+/client/node_modules/
+/client/build/
+/client/package-lock.json

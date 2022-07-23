@@ -262,7 +262,7 @@ private suspend fun processLinkSharedEvent(payload: LinkSharedPayload, locations
         } else if (needRequestAuth.isNotEmpty()) {
             // prompt user to pass authentication in Space if all Space links in the message require authentication
             val spaceOrg = needRequestAuth.first().spaceOrg
-            val spaceOAuthUrl = "$entrypointUrl/${
+            val spaceOAuthUrl = "$entrypointUrl${
                 locations.href(
                     Routes.SpaceOAuth(
                         slackTeamId = slackTeamId,

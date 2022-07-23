@@ -2,6 +2,7 @@ package org.jetbrains.slackUnfurls.slackUnfurlsInSpace
 
 import com.slack.api.RequestConfigurator
 import com.slack.api.methods.request.chat.ChatUnfurlRequest
+import com.slack.api.model.Team
 import org.jetbrains.slackUnfurls.db
 import org.jetbrains.slackUnfurls.decrypt
 import org.jetbrains.slackUnfurls.encrypt
@@ -29,6 +30,14 @@ class SlackAppClient private constructor(
         fetch("sending unfurls to Slack") { accessToken ->
             slackApiClient.methods(accessToken).chatUnfurl(builder)
         }
+
+    suspend fun getTeamInfo(): Team? {
+        return fetch("sending unfurls to Slack") { accessToken ->
+            slackApiClient.methods(accessToken).teamInfo {
+                it.team(teamId)
+            }
+        }?.team
+    }
 
     override suspend fun reloadTokensFromDb(): Tokens? {
         val team = db.slackTeams.getById(teamId)

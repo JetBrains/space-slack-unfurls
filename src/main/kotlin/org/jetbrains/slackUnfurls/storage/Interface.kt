@@ -27,8 +27,9 @@ interface Storage {
         suspend fun getForSpaceOrg(spaceOrgId: String): List<SlackTeam>
         suspend fun getById(teamId: String, spaceOrgId: String? = null): SlackTeam?
         suspend fun getByDomain(domain: String, spaceOrgId: String): SlackTeam?
-        suspend fun create(teamId: String, domain: String, spaceOrgId: String, accessToken: ByteArray, refreshToken: ByteArray)
+        suspend fun create(teamId: String, domain: String, spaceOrgId: String, accessToken: ByteArray, refreshToken: ByteArray, iconUrl: String?, name: String)
         suspend fun updateDomain(teamId: String, newDomain: String)
+        suspend fun updateIconUrlAndName(teamId: String, iconUrl: String, name: String)
         suspend fun updateTokens(teamId: String, accessToken: ByteArray, refreshToken: ByteArray?)
         suspend fun disconnectFromSpaceOrg(teamId: String, spaceOrgId: String)
         suspend fun delete(teamId: String)
@@ -87,7 +88,7 @@ interface Storage {
     }
 }
 
-class SlackTeam(val id: String, val domain: String, val appAccessToken: ByteArray, val appRefreshToken: ByteArray)
+class SlackTeam(val id: String, val domain: String, val appAccessToken: ByteArray, val appRefreshToken: ByteArray, val iconUrl: String?, val name: String?)
 
 class SpaceOrg(val url: String, val domain: String, val clientId: String, val clientSecret: ByteArray, val lastUnfurlQueueItemEtag: Long?)
 

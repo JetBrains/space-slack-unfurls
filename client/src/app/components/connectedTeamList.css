@@ -1,0 +1,56 @@
+.teams-container {
+    align-self: stretch;
+    margin-top: 36px;
+
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.teams-header {
+    color: var(--secondary-text-color);
+}
+
+.team-row {
+}
+
+.team-separator {
+    margin-top: 8px;
+
+    border: 0;
+    height: 1px;
+    background-color: var(--main-color-15);
+}
+
+.team-info {
+    margin-top: 16px;
+    margin-bottom: 8px;
+
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.team-icon {
+    width: 40px;
+    height: 40px;
+}
+
+.team-name-and-domain-container {
+    margin-left: 16px;
+
+    display: flex;
+    flex-direction: column;
+}
+
+.team-name {
+    font-size: 18px;
+    line-height: 24px;
+    font-weight: 500;
+}
+
+.team-domain {
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--secondary-text-color);
+}

@@ -1,3 +1,4 @@
+import com.github.gradle.node.npm.task.NpmTask
 import java.util.Properties
 
 val kotlin_version = "1.6.10"
@@ -21,6 +22,12 @@ plugins {
     kotlin("plugin.serialization") version "1.6.10"
     kotlin("plugin.noarg") version "1.6.10"
     id("docker-compose")
+    id("com.github.node-gradle.node") version "3.4.0"
+}
+
+node {
+    version.set("16.15.1")
+    download.set(true)
 }
 
 application {
@@ -77,6 +84,26 @@ kotlin.sourceSets.all {
     }
 }
 
+sourceSets {
+    main {
+        resources {
+            srcDirs("build/client")
+        }
+    }
+}
+
+tasks.register("clientNpmInstall", NpmTask::class) {
+    npmCommand.set(listOf("install"))
+    workingDir.set(File("./client"))
+}
+
+tasks.register("buildClient", NpmTask::class) {
+    npmCommand.set(listOf("run", "build"))
+    workingDir.set(File("./client"))
+
+    dependsOn("clientNpmInstall")
+}
+
 dockerCompose {
     projectName = "slack-unfurls"
     removeContainers = false
@@ -88,6 +115,10 @@ tasks {
         systemProperties(readLocalProperties())
     }
     dockerCompose.isRequiredBy(run)
+
+    val distZip by existing {
+        dependsOn("buildClient")
+    }
 }
 
 fun readLocalProperties(): Map<String, String> {

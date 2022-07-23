@@ -1,0 +1,7 @@
+.spring {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    min-width: 0;
+    flex: 1.0 10.0 1px;
+}

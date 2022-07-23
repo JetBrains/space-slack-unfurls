@@ -27,19 +27,26 @@ class SlackUserClientImpl(
         }
     }
 
-    suspend fun fetchThreadMessage(channelId: String, messageId: String, threadTs: String) = fetch("fetching thread message") { accessToken ->
-        slackApiClient.methods(accessToken).conversationsReplies {
-            it.channel(channelId)
-                .latest(threadTs)
-                .ts(messageIdToTs(messageId))
-                .inclusive(true)
-                .limit(1)
+    suspend fun fetchThreadMessage(channelId: String, messageId: String, threadTs: String) =
+        fetch("fetching thread message") { accessToken ->
+            slackApiClient.methods(accessToken).conversationsReplies {
+                it.channel(channelId)
+                    .latest(threadTs)
+                    .ts(messageIdToTs(messageId))
+                    .inclusive(true)
+                    .limit(1)
+            }
         }
-    }
 
     suspend fun fetchUserName(userId: String) = fetch("fetching user name") { accessToken ->
         slackApiClient.methods(accessToken).usersInfo {
             it.user(userId)
+        }
+    }
+
+    suspend fun fetchBotName(botId: String) = fetch("fetching bot name") { accessToken ->
+        slackApiClient.methods(accessToken).botsInfo {
+            it.bot(botId)
         }
     }
 
@@ -61,7 +68,8 @@ class SlackUserClientImpl(
 
 
     override suspend fun reloadTokensFromDb(): Tokens? {
-        return when (val tokens = db.slackUserTokens.get(context.spaceOrgId, context.spaceUserId, context.slackTeamId)) {
+        return when (val tokens =
+            db.slackUserTokens.get(context.spaceOrgId, context.spaceUserId, context.slackTeamId)) {
             is UserToken.Value ->
                 Tokens(decrypt(tokens.accessToken), decrypt(tokens.refreshToken), tokens.permissionScopes)
             is UserToken.UnfurlsDisabled ->
@@ -128,7 +136,13 @@ sealed class SlackUserClient {
             )) {
                 is UserToken.Value ->
                     Instance(
-                        SlackUserClientImpl(context, decrypt(tokens.accessToken), decrypt(tokens.refreshToken), tokens.permissionScopes, log)
+                        SlackUserClientImpl(
+                            context,
+                            decrypt(tokens.accessToken),
+                            decrypt(tokens.refreshToken),
+                            tokens.permissionScopes,
+                            log
+                        )
                     )
                 is UserToken.UnfurlsDisabled ->
                     UnfurlsDisabled

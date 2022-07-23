@@ -35,6 +35,8 @@ object SlackTeams : IdTable<String>("SlackTeams") {
     val accessToken = blob("accessToken")
     val refreshToken = blob("refreshToken")
     val created = datetime("created")
+    val iconUrl = varchar("iconUrl", 256).nullable()
+    val name = varchar("name", 256).nullable()
 }
 
 object Slack2Space : Table("Slack2Space") {
