@@ -367,6 +367,7 @@ private suspend fun StringBuilder.appendRichTextElement(
                 append("> ")
                 appendRichTextElement(it, slackClient, slackDomain)
                 appendLine()
+                appendLine()
             }
         }
         is RichTextSectionElement.Text -> {
