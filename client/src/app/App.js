@@ -14,9 +14,6 @@ function App() {
 
     useEffect(() => {
         const fetchPageSelectorData = async () => {
-            // TODO: remove this after next Space deploy. This is to combat the bug with lifetimes
-            //       when loading the Homepage tab.
-            await new Promise(r => setTimeout(r, 500));
             await spaceAuth.fetchSpaceUserToken();
             await homepageData.fetchHomepageData();
             setPageSelectorDataLoaded(true);

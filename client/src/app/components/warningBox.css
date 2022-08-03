@@ -10,6 +10,7 @@
 .warning-content-container {
     display: flex;
     flex-direction: row;
+    align-items: center;
 
     margin: 16px;
 }
