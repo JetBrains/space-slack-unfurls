@@ -1,4 +1,4 @@
-# slack-unfurls
+# Space Slack Link Previews
 
 This is the application for providing link previews between Slack and Space in both directions. It provides link previews 
 for Slack message links in Space and link previews for Space issue, code review and chat message links in Slack.
@@ -156,3 +156,7 @@ app installation screen.
 Remember to reconfigure the Slack application settings and then reinstall the application to both Slack workspace and Space organization 
 whenever the ngrok tunnel is reestablished with a new address. Space allows multiple applications with the same name, so it's better to drop
 the previous installations from the test organization before installing the application afresh.
+
+# License
+
+`Space Slack Link Previews` is distributed under the terms of the Apache License (Version 2.0).
