@@ -1,4 +1,4 @@
-# Space Slack Link Previews
+# Space Slack Link Previews ![](https://jb.gg/badges/incubator-flat-square.svg)
 
 This is the application for providing link previews between Slack and Space in both directions. It provides link previews 
 for Slack message links in Space and link previews for Space issue, code review and chat message links in Slack.
